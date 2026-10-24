@@ -14,7 +14,7 @@ import { LEVELS } from '@/game/levels';
 const DT = 1 / 60;
 
 function make(rows: string[], hints?: string[]): Game {
-  const def: LevelDef = { id: 'test', name: 'test', rows, hints };
+  const def: LevelDef = { id: 'test', name: 'test', world: 'forest', rows, hints };
   return new Game(parseLevel(def));
 }
 
@@ -181,5 +181,72 @@ describe('uloženie', () => {
     expect(save.best.a).toEqual({ fireflies: 5, crystals: 1 });
     expect(parseSave(JSON.stringify(save))).toEqual(save);
     expect(parseSave('nezmysel').unlocked).toBe(0);
+  });
+});
+
+describe('boj a jaskyne', () => {
+  it('skok na hlavu rozplynie tieň a hráč sa odrazí', () => {
+    // Tieň priamo pod padajúcim hráčom.
+    const g2 = make(['    ', '    ', ' P s        E', '#############']);
+    const shade = g2.shades[0]!;
+    g2.player.x = shade.x - 4;
+    g2.player.y = shade.y - 30;
+    g2.player.vy = 200;
+    shade.active = true;
+    shade.home = { x: shade.x, y: shade.y };
+    const events = run(g2, 0.3);
+    expect(events.some((e) => e.type === 'stomp')).toBe(true);
+    expect(shade.alive).toBe(false);
+  });
+
+  it('iskra stojí olej a spáli tieň', () => {
+    const game = make([' P      s      E', '################']);
+    run(game, 0.3);
+    const oil = game.oil;
+    game.shades[0]!.y = game.lamp.y;
+    game.shades[0]!.home = { x: game.shades[0]!.x, y: game.lamp.y };
+    const events = [...game.step(DT, { ...NO_INPUT, spark: true })];
+    expect(game.oil).toBeLessThan(oil - 3);
+    events.push(...run(game, 1));
+    expect(events.some((e) => e.type === 'shadeDie')).toBe(true);
+  });
+
+  it('iskra sa zastaví o stenu a osvetľuje okolie', () => {
+    const game = make([' P  #     E', '###########']);
+    run(game, 0.3);
+    game.step(DT, { ...NO_INPUT, spark: true });
+    expect(game.lights().length).toBe(2);
+    const events = run(game, 0.5);
+    expect(events.some((e) => e.type === 'fizzle')).toBe(true);
+    expect(game.sparks.length).toBe(0);
+  });
+
+  it('mora pije olej, rozžiarenie ju spáli', () => {
+    const game = make([' Pm         E', '#############']);
+    run(game, 1.5);
+    expect(game.moths[0]!.drinking).toBe(true);
+    const a = game.oil;
+    run(game, 1);
+    expect(a - game.oil).toBeGreaterThan(4);
+    const events = run(game, 1, { flare: true });
+    expect(events.some((e) => e.type === 'mothDie')).toBe(true);
+  });
+
+  it('voda topí', () => {
+    const game = make([' P          E', '###www#######', '###www#######']);
+    const events = run(game, 2, { right: true });
+    expect(events).toContainEqual({ type: 'died', cause: 'water' });
+  });
+
+  it('drobiaci sa kameň sa po chvíli rozpadne a potom vráti', () => {
+    const game = make([' P          E', '  ccc        ', '             ', '#############']);
+    game.player.x = 3 * TILE + 4;
+    run(game, 0.3);
+    expect(game.crumbles.some((c) => c.state !== 'solid')).toBe(true);
+    const events = run(game, 1);
+    expect(events.some((e) => e.type === 'crumble')).toBe(true);
+    game.player.x = 10 * TILE;
+    run(game, 4);
+    expect(game.crumbles.every((c) => c.state === 'solid')).toBe(true);
   });
 });

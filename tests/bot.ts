@@ -12,6 +12,7 @@ export function botRun(game: Game, seconds = 180): { done: boolean; col: number;
   for (let t = 0; t < seconds && game.state !== 'done'; t += dt) {
     game.oil = 100;
     for (const s of game.shades) s.alive = false;
+    for (const m of game.moths) m.alive = false;
     const p = game.player;
     const front = Math.floor((p.x + PLAYER_W + 4) / TILE);
     const ahead = (d: number) => Math.floor((p.x + PLAYER_W + d) / TILE);
@@ -21,11 +22,15 @@ export function botRun(game: Game, seconds = 180): { done: boolean; col: number;
     const solidish = (c: number, r: number) => {
       const tile = tileAt(level, c, r);
       return (
-        tile === Tile.Ground || tile === Tile.Ledge || (tile === Tile.Light && game.isTileLit(c, r))
+        tile === Tile.Ground ||
+        tile === Tile.Ledge ||
+        tile === Tile.Crumble ||
+        (tile === Tile.Light && game.isTileLit(c, r))
       );
     };
     const wall =
       tileAt(level, front, row) === Tile.Ground ||
+      tileAt(level, front, row) === Tile.Crumble ||
       (tileAt(level, front, row) === Tile.Light && game.isTileLit(front, row));
     const gap = !solidish(ahead(2), feet);
     const thorns = [2, 6].some((d) => tileAt(level, ahead(d), row) === Tile.Thorns);

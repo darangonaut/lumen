@@ -10,6 +10,7 @@ import {
 import {
   FLARE_RADIUS,
   LANTERN_RADIUS,
+  SPARK_RADIUS,
   PLAYER_H,
   PLAYER_W,
   type Game,
@@ -24,6 +25,11 @@ import {
   decorOf,
   dot,
   drawCampfire,
+  drawCaveBack,
+  drawCrumble,
+  drawMoth,
+  drawSpark,
+  drawWaterSurface,
   drawCrystal,
   drawFirefly,
   drawFlame,
@@ -109,7 +115,22 @@ export class Renderer {
     spark: Texture.EMPTY,
     wisp: Texture.EMPTY,
     dust: Texture.EMPTY,
+    stone: Texture.EMPTY,
+    moth: [] as Texture[],
+    sparkBall: Texture.EMPTY,
+    water: [] as Texture[],
+    crumble: Texture.EMPTY,
   };
+  /** Pozadia svetov: nebo/jaskyňa, vzdialené a bližšie siluety. */
+  private backs = {
+    forest: { sky: Texture.EMPTY, far: Texture.EMPTY, near: Texture.EMPTY },
+    caves: { sky: Texture.EMPTY, far: Texture.EMPTY, near: Texture.EMPTY },
+  };
+  private darkness = DARKNESS;
+  private mothSprites: Sprite[] = [];
+  private sparkSprites: Sprite[] = [];
+  private crumbleSprites: { sprite: Sprite; col: number; row: number }[] = [];
+  private waterSprites: { sprite: Sprite; col: number }[] = [];
   private player = new Sprite();
   private shadeSprites: { body: Sprite; eyes: Sprite }[] = [];
   private fireflySprites: Sprite[] = [];
@@ -142,23 +163,30 @@ export class Renderer {
     this.tex.spark = texture(dot(C.flameHot));
     this.tex.wisp = texture(dot(C.shadeInner, 2, 2));
     this.tex.dust = texture(dot(0x6a6080));
+    this.tex.stone = texture(dot(0x5a5a74, 2, 2));
+    this.tex.moth = [0, 1].map((f) => texture(drawMoth(f)));
+    this.tex.sparkBall = texture(drawSpark());
+    this.tex.water = [0, 1].map((f) => texture(drawWaterSurface(f)));
+    this.tex.crumble = texture(drawCrumble());
     const light = Texture.from(lightCanvas(128));
     light.source.scaleMode = 'linear';
     this.tex.light = light;
 
     // Pozadie: nebo, mesiac, kopce a stromy s paralaxou.
-    this.sky = new TilingSprite({ texture: texture(drawSky(320, 240)), width: 320, height: 240 });
+    this.backs.forest = {
+      sky: texture(drawSky(320, 240)),
+      far: texture(drawSilhouette(480, 110, C.hill, 'hills', 1)),
+      near: texture(drawSilhouette(400, 130, C.trees, 'trees', 2)),
+    };
+    this.backs.caves = {
+      sky: texture(drawCaveBack(320, 240)),
+      far: texture(drawSilhouette(480, 110, 0x111522, 'hills', 3)),
+      near: texture(drawSilhouette(400, 130, 0x0b0e1a, 'spikes', 4)),
+    };
+    this.sky = new TilingSprite({ texture: this.backs.forest.sky, width: 320, height: 240 });
     this.moon = new Sprite(texture(drawMoon()));
-    this.hills = new TilingSprite({
-      texture: texture(drawSilhouette(480, 110, C.hill, 'hills', 1)),
-      width: 480,
-      height: 110,
-    });
-    this.trees = new TilingSprite({
-      texture: texture(drawSilhouette(400, 130, C.trees, 'trees', 2)),
-      width: 400,
-      height: 130,
-    });
+    this.hills = new TilingSprite({ texture: this.backs.forest.far, width: 480, height: 110 });
+    this.trees = new TilingSprite({ texture: this.backs.forest.near, width: 400, height: 130 });
     this.bg.addChild(this.sky, this.moon, this.hills, this.trees);
 
     this.lightLayer.blendMode = 'erase';
@@ -189,7 +217,31 @@ export class Renderer {
     this.glowPool = [];
     this.particles = [];
 
+    const back = this.backs[level.world];
+    this.sky.texture = back.sky;
+    this.hills.texture = back.far;
+    this.trees.texture = back.near;
+    this.moon.visible = level.world === 'forest';
+    this.darkness = level.world === 'caves' ? 0.95 : DARKNESS;
+
     this.level.addChild(new Sprite(texture(drawTerrain(level))));
+    this.waterSprites = [];
+    for (let row = 0; row < level.height; row++) {
+      for (let col = 0; col < level.width; col++) {
+        if (tileAt(level, col, row) !== Tile.Water || tileAt(level, col, row - 1) === Tile.Water)
+          continue;
+        const sprite = new Sprite(this.tex.water[0]);
+        sprite.position.set(col * TILE, row * TILE);
+        this.level.addChild(sprite);
+        this.waterSprites.push({ sprite, col });
+      }
+    }
+    this.crumbleSprites = game.crumbles.map((c) => {
+      const sprite = new Sprite(this.tex.crumble);
+      sprite.position.set(c.col * TILE, c.row * TILE);
+      this.level.addChild(sprite);
+      return { sprite, col: c.col, row: c.row };
+    });
     this.lightTiles = [];
     for (let row = 0; row < level.height; row++) {
       for (let col = 0; col < level.width; col++) {
@@ -253,6 +305,13 @@ export class Renderer {
       this.above.addChild(eyes);
       return { body, eyes };
     });
+    this.mothSprites = game.moths.map(() => {
+      const s = new Sprite(this.tex.moth[0]);
+      s.anchor.set(0.5);
+      this.actors.addChild(s);
+      return s;
+    });
+    this.sparkSprites = [];
     this.flames = [0, 1].map((i) => {
       const s = new Sprite(this.tex.flame[i]);
       s.anchor.set(0.5, 1);
@@ -335,6 +394,31 @@ export class Renderer {
         case 'shadeDie':
           this.burst(e.x, e.y, 16, C.shadeInner, 60, false);
           this.burst(e.x, e.y, 10, 0xffb070, 50, true);
+          break;
+        case 'stomp':
+          this.shake = 2;
+          for (const dir of [-1, 1])
+            this.spawn(this.tex.dust, e.x + dir * 4, e.y + 4, dir * 40, 0, 0, 0.3, false);
+          break;
+        case 'mothDie':
+          this.burst(e.x, e.y, 8, 0xe8dcc0, 40, false);
+          this.burst(e.x, e.y, 6, C.flame, 40, true);
+          break;
+        case 'fizzle':
+          this.burst(e.x, e.y, 6, C.flame, 35, true);
+          break;
+        case 'crumble':
+          for (let i = 0; i < 8; i++)
+            this.spawn(
+              this.tex.stone,
+              e.x + (Math.random() - 0.5) * 14,
+              e.y + Math.random() * 8,
+              (Math.random() - 0.5) * 30,
+              Math.random() * 20,
+              500,
+              0.8,
+              false,
+            );
           break;
         case 'land':
           for (const dir of [-1, 1])
@@ -503,6 +587,50 @@ export class Renderer {
       f.texture = this.tex.flame[(Math.floor(t * 10) + i) % 3]!;
     });
 
+    game.moths.forEach((m, i) => {
+      const s = this.mothSprites[i]!;
+      s.visible = m.alive;
+      if (!m.alive) return;
+      s.texture = this.tex.moth[Math.floor(m.phase * 0.8) % 2]!;
+      s.position.set(Math.round(m.x), Math.round(m.y));
+      s.scale.x = m.vx < 0 ? -1 : 1;
+    });
+    // Iskry: sprity podľa počtu, s iskričkami za sebou.
+    while (this.sparkSprites.length < game.sparks.length) {
+      const s = new Sprite(this.tex.sparkBall);
+      s.anchor.set(0.5);
+      this.above.addChild(s);
+      this.sparkSprites.push(s);
+    }
+    this.sparkSprites.forEach((s, i) => {
+      const sp = game.sparks[i];
+      s.visible = !!sp;
+      if (!sp) return;
+      s.position.set(Math.round(sp.x), Math.round(sp.y));
+      if (Math.random() < 0.6) {
+        this.spawn(
+          this.tex.spark,
+          sp.x,
+          sp.y,
+          -Math.sign(sp.vx) * 20,
+          (Math.random() - 0.5) * 20,
+          30,
+          0.3,
+          true,
+        );
+        this.particles[this.particles.length - 1]!.sprite.tint = C.flame;
+      }
+    });
+    // Drobiace sa kamene sa trasú, potom zmiznú.
+    game.crumbles.forEach((c, i) => {
+      const { sprite } = this.crumbleSprites[i]!;
+      sprite.visible = c.state !== 'gone';
+      const jitter = c.state === 'shaking' ? Math.round(Math.sin(t * 60) * 1) : 0;
+      sprite.position.set(c.col * TILE + jitter, c.row * TILE);
+    });
+    const waveFrame = Math.floor(t * 3);
+    for (const w of this.waterSprites) w.sprite.texture = this.tex.water[(waveFrame + w.col) % 2]!;
+
     game.shades.forEach((s, i) => {
       const { body, eyes } = this.shadeSprites[i]!;
       body.visible = eyes.visible = s.alive;
@@ -566,7 +694,7 @@ export class Renderer {
     this.darkFill
       .clear()
       .rect(0, 0, this.viewW, this.viewH)
-      .fill({ color: 0x04030a, alpha: DARKNESS });
+      .fill({ color: 0x04030a, alpha: this.darkness });
     this.app.renderer.render({ container: this.darkFill, target: this.dark, clear: true });
 
     let used = 0;
@@ -647,8 +775,12 @@ export class Renderer {
       light(m.x, m.y, 9, 0.5);
       glow(m.x, m.y, 8, C.mushroom, 0.25);
     }
+    for (const sp of game.sparks) {
+      light(sp.x, sp.y, SPARK_RADIUS);
+      glow(sp.x, sp.y, 22, C.flame, 0.35);
+    }
     // Mesiac presvitá tmou (terén pred ním ostane siluetou).
-    light(vx + this.moon.x + 13, vy + this.moon.y + 13, 22, 0.9);
+    if (this.moon.visible) light(vx + this.moon.x + 13, vy + this.moon.y + 13, 22, 0.9);
     for (let i = used; i < this.lightPool.length; i++) this.lightPool[i]!.visible = false;
     for (let i = glowUsed; i < this.glowPool.length; i++) this.glowPool[i]!.visible = false;
     this.app.renderer.render({ container: this.lightRoot, target: this.dark, clear: false });

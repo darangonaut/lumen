@@ -15,6 +15,9 @@ const KEYS: Record<string, keyof Input> = {
   ShiftRight: 'flare',
   KeyX: 'flare',
   KeyK: 'flare',
+  KeyC: 'spark',
+  KeyF: 'spark',
+  KeyJ: 'spark',
 };
 
 /** Klávesnica a dotykové tlačidlá → stav ovládania. */
@@ -87,6 +90,7 @@ export class Controls {
       down: active.has('down'),
       jump: active.has('jump'),
       flare: active.has('flare'),
+      spark: active.has('spark'),
     };
   }
 

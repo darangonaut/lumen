@@ -1,4 +1,4 @@
-import { TILE, Tile, tileAt, type Level } from '@/game/level';
+import { TILE, Tile, tileAt, type Level, type World } from '@/game/level';
 import { PixelCanvas, pixelNoise, shade, type Rgb } from './PixelCanvas';
 
 /** Paleta nočného lesa. */
@@ -40,6 +40,41 @@ export const C = {
   mushroom: 0x6cf0e0,
 };
 
+/** Farby terénu podľa sveta. */
+interface TerrainPalette {
+  soil: Rgb;
+  soilDark: Rgb;
+  soilSpot: Rgb;
+  stone: Rgb;
+  grass: Rgb;
+  grassDark: Rgb;
+  grassLight: Rgb;
+}
+
+const TERRAIN: Record<World, TerrainPalette> = {
+  forest: {
+    soil: C.soil,
+    soilDark: C.soilDark,
+    soilSpot: C.soilSpot,
+    stone: C.stone,
+    grass: C.grass,
+    grassDark: C.grassDark,
+    grassLight: C.grassLight,
+  },
+  // Jaskyne: modrošedá skala, navrchu tyrkysový mach.
+  caves: {
+    soil: 0x262a3e,
+    soilDark: 0x1a1d2c,
+    soilSpot: 0x30364c,
+    stone: 0x4a5270,
+    grass: 0x2f7a78,
+    grassDark: 0x22585a,
+    grassLight: 0x58b8a8,
+  },
+};
+
+let pal: TerrainPalette = TERRAIN.forest;
+
 /** Zem: trávnatý vrch, hlina so skvrnami a kameňmi, tmavé okraje. */
 function drawGroundTile(pc: PixelCanvas, level: Level, col: number, row: number): void {
   const x0 = col * TILE;
@@ -52,13 +87,13 @@ function drawGroundTile(pc: PixelCanvas, level: Level, col: number, row: number)
   // Hlbšie vrstvy tmavnú.
   let depth = 0;
   while (depth < 4 && ground(col, row - depth - 1)) depth++;
-  const base = shade(C.soil, 1 - depth * 0.08);
+  const base = shade(pal.soil, 1 - depth * 0.08);
   for (let y = 0; y < TILE; y++) {
     for (let x = 0; x < TILE; x++) {
       const n = pixelNoise(x0 + x, y0 + y, 7);
       let color: Rgb = base;
-      if (n < 0.06) color = shade(C.soilSpot, 1 - depth * 0.08);
-      else if (n > 0.97) color = C.soilDark;
+      if (n < 0.06) color = shade(pal.soilSpot, 1 - depth * 0.08);
+      else if (n > 0.97) color = pal.soilDark;
       pc.set(x0 + x, y0 + y, color);
     }
   }
@@ -66,18 +101,31 @@ function drawGroundTile(pc: PixelCanvas, level: Level, col: number, row: number)
   if (pixelNoise(col, row, 3) < 0.35) {
     const sx = x0 + 3 + Math.floor(pixelNoise(col, row, 4) * 8);
     const sy = y0 + 5 + Math.floor(pixelNoise(col, row, 5) * 7);
-    pc.fillRect(sx, sy, 3, 2, C.stone);
-    pc.set(sx, sy, shade(C.stone, 1.25));
-    pc.fillRect(sx, sy + 2, 3, 1, C.soilDark);
+    pc.fillRect(sx, sy, 3, 2, pal.stone);
+    pc.set(sx, sy, shade(pal.stone, 1.25));
+    pc.fillRect(sx, sy + 2, 3, 1, pal.soilDark);
   }
-  if (leftOpen) for (let y = 0; y < TILE; y++) pc.set(x0, y0 + y, C.soilDark);
-  if (rightOpen) for (let y = 0; y < TILE; y++) pc.set(x0 + TILE - 1, y0 + y, C.soilDark);
+  if (leftOpen) for (let y = 0; y < TILE; y++) pc.set(x0, y0 + y, pal.soilDark);
+  if (rightOpen) for (let y = 0; y < TILE; y++) pc.set(x0 + TILE - 1, y0 + y, pal.soilDark);
   if (bottomOpen) {
-    pc.fillRect(x0, y0 + TILE - 2, TILE, 2, C.soilDark);
-    // Visiace korienky.
-    for (let x = 1; x < TILE; x += 3) {
-      const len = Math.floor(pixelNoise(x0 + x, y0, 9) * 4);
-      for (let i = 0; i < len; i++) pc.set(x0 + x, y0 + TILE + i, C.soilDark);
+    pc.fillRect(x0, y0 + TILE - 2, TILE, 2, pal.soilDark);
+    if (level.world === 'caves') {
+      // Krápniky: úzke trojuholníky visiace zo stropu.
+      if (pixelNoise(col, row, 13) < 0.55) {
+        const cx = x0 + 3 + Math.floor(pixelNoise(col, row, 14) * 10);
+        const len = 4 + Math.floor(pixelNoise(col, row, 15) * 9);
+        for (let i = 0; i < len; i++) {
+          const w = Math.max(0, Math.floor((1 - i / len) * 2.5));
+          for (let dx = -w; dx <= w; dx++)
+            pc.set(cx + dx, y0 + TILE + i, dx === -w ? pal.soilDark : pal.soilSpot);
+        }
+      }
+    } else {
+      // Visiace korienky.
+      for (let x = 1; x < TILE; x += 3) {
+        const len = Math.floor(pixelNoise(x0 + x, y0, 9) * 4);
+        for (let i = 0; i < len; i++) pc.set(x0 + x, y0 + TILE + i, pal.soilDark);
+      }
     }
   }
   if (topOpen) {
@@ -85,13 +133,13 @@ function drawGroundTile(pc: PixelCanvas, level: Level, col: number, row: number)
       const n = pixelNoise(x0 + x, y0, 11);
       const h = 3 + (n < 0.3 ? 1 : 0);
       for (let y = 0; y < h; y++)
-        pc.set(x0 + x, y0 + y, y === 0 ? C.grassLight : y < 2 ? C.grass : C.grassDark);
+        pc.set(x0 + x, y0 + y, y === 0 ? pal.grassLight : y < 2 ? pal.grass : pal.grassDark);
       // Stebielka nad hranou.
-      if (n > 0.72) pc.set(x0 + x, y0 - 1, C.grass);
-      if (n > 0.9) pc.set(x0 + x, y0 - 2, C.grassDark);
+      if (n > 0.72) pc.set(x0 + x, y0 - 1, pal.grass);
+      if (n > 0.9) pc.set(x0 + x, y0 - 2, pal.grassDark);
     }
-    if (leftOpen) pc.set(x0, y0 + 3, C.grassDark);
-    if (rightOpen) pc.set(x0 + TILE - 1, y0 + 3, C.grassDark);
+    if (leftOpen) pc.set(x0, y0 + 3, pal.grassDark);
+    if (rightOpen) pc.set(x0 + TILE - 1, y0 + 3, pal.grassDark);
   }
 }
 
@@ -143,8 +191,9 @@ export function decorOf(level: Level): Decor[] {
       const n = pixelNoise(col, row, 41);
       const x = col * TILE + 3 + Math.floor(pixelNoise(col, row, 42) * 10);
       const y = row * TILE;
-      if (n < 0.07) out.push({ kind: 'mushroom', x, y });
-      else if (n < 0.16) out.push({ kind: 'flower', x, y });
+      const caves = level.world === 'caves';
+      if (n < (caves ? 0.16 : 0.07)) out.push({ kind: 'mushroom', x, y });
+      else if (!caves && n < 0.16) out.push({ kind: 'flower', x, y });
       else if (n < 0.4) out.push({ kind: 'tuft', x, y });
     }
   }
@@ -154,10 +203,12 @@ export function decorOf(level: Level): Decor[] {
 /** Celý terén levelu do jedného plátna (svetelné plošiny zvlášť). */
 export function drawTerrain(level: Level): PixelCanvas {
   const pc = new PixelCanvas(level.width * TILE, level.height * TILE);
+  pal = TERRAIN[level.world];
   for (let row = 0; row < level.height; row++) {
     for (let col = 0; col < level.width; col++) {
       const tile = level.tiles[row * level.width + col];
       if (tile === Tile.Ground) drawGroundTile(pc, level, col, row);
+      else if (tile === Tile.Water) drawWater(pc, level, col, row);
       else if (tile === Tile.Ledge) drawLedge(pc, col, row, level);
       else if (tile === Tile.Thorns) drawThorns(pc, col, row);
     }
@@ -173,10 +224,111 @@ export function drawTerrain(level: Level): PixelCanvas {
       pc.set(d.x - 1, d.y - 4, 0xb05aa8);
       pc.set(d.x + 1, d.y - 4, 0xb05aa8);
     } else {
-      pc.set(d.x, d.y - 2, C.grass);
-      pc.set(d.x + 1, d.y - 3, C.grassLight);
-      pc.set(d.x + 2, d.y - 2, C.grass);
-      pc.set(d.x + 1, d.y - 1, C.grassDark);
+      pc.set(d.x, d.y - 2, pal.grass);
+      pc.set(d.x + 1, d.y - 3, pal.grassLight);
+      pc.set(d.x + 2, d.y - 2, pal.grass);
+      pc.set(d.x + 1, d.y - 1, pal.grassDark);
+    }
+  }
+  return pc;
+}
+
+const WATER_DEEP = 0x0a1e38;
+const WATER = 0x12345a;
+export const WATER_LIGHT = 0x6ab0d8;
+
+/** Voda: tmavomodrá hĺbka, hladinu vlní renderer. */
+function drawWater(pc: PixelCanvas, level: Level, col: number, row: number): void {
+  const x0 = col * TILE;
+  const y0 = row * TILE;
+  const surface = tileAt(level, col, row - 1) !== Tile.Water;
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      const depth = surface ? y / TILE : 1;
+      const n = pixelNoise(x0 + x, y0 + y, 17);
+      let c = depth < 0.3 ? WATER : WATER_DEEP;
+      if (n < 0.03) c = shade(WATER, 1.3);
+      if (surface && y < 3) continue; // hladinu kreslí renderer (vlní sa)
+      pc.set(x0 + x, y0 + y, c);
+    }
+  }
+}
+
+/** Hladina vody (dve fázy vlnenia), 16×4. */
+export function drawWaterSurface(frame: number): PixelCanvas {
+  const pc = new PixelCanvas(TILE, 4);
+  for (let x = 0; x < TILE; x++) {
+    const wave = Math.sin((x + frame * 4) * (Math.PI / 8)) > 0.3 ? 0 : 1;
+    pc.set(x, wave, WATER_LIGHT);
+    for (let y = wave + 1; y < 4; y++) pc.set(x, y, WATER);
+  }
+  return pc;
+}
+
+/** Drobiaci sa kameň: popraskaná skala. */
+export function drawCrumble(): PixelCanvas {
+  const pc = new PixelCanvas(TILE, TILE);
+  for (let y = 0; y < TILE; y++) {
+    for (let x = 0; x < TILE; x++) {
+      const n = pixelNoise(x, y, 101);
+      pc.set(x, y, y < 2 ? 0x7a7a94 : n < 0.1 ? 0x3a3a52 : 0x5a5a74);
+    }
+  }
+  // Praskliny.
+  for (const [x, y] of [
+    [4, 2],
+    [5, 3],
+    [5, 4],
+    [6, 5],
+    [6, 6],
+    [5, 7],
+    [11, 3],
+    [10, 4],
+    [10, 5],
+    [11, 6],
+    [12, 7],
+    [8, 9],
+    [8, 10],
+    [9, 11],
+    [3, 11],
+    [4, 12],
+    [4, 13],
+    [13, 11],
+    [12, 12],
+  ] as const)
+    pc.set(x, y, 0x24243a);
+  pc.fillRect(0, TILE - 1, TILE, 1, 0x2a2a40);
+  return pc;
+}
+
+/** Mora: svetlé krídla, tmavé telo; dve polohy krídel. */
+export function drawMoth(frame: number): PixelCanvas {
+  const pc = new PixelCanvas(9, 7);
+  const rows =
+    frame === 0
+      ? ['ww.....ww', 'wwwb.bwww', '.wwbbbww.', '...bbb...', '....b....']
+      : ['.........', '.ww...ww.', 'wwwbbbwww', '.wwbbbww.', '....b....'];
+  pc.stamp(0, 1, rows, { w: 0xe8dcc0, b: 0x5a4a3a });
+  return pc;
+}
+
+/** Iskra: malé žeravé jadro. */
+export function drawSpark(): PixelCanvas {
+  const pc = new PixelCanvas(5, 5);
+  pc.stamp(0, 0, ['..y..', '.yWy.', 'yWWWy', '.yWy.', '..y..'], { y: C.flame, W: C.flameHot });
+  return pc;
+}
+
+/** Jaskynné pozadie: tma s občasnými kryštálikmi. */
+export function drawCaveBack(width: number, height: number): PixelCanvas {
+  const pc = new PixelCanvas(width, height);
+  for (let y = 0; y < height; y++) {
+    const t = y / height;
+    const base =
+      (Math.round(7 + 6 * t) << 16) | (Math.round(8 + 9 * t) << 8) | Math.round(15 + 16 * t);
+    for (let x = 0; x < width; x++) {
+      const n = pixelNoise(x, y, 111);
+      pc.set(x, y, n > 0.998 ? 0x4a8a9a : n > 0.994 ? 0x1e3040 : base);
     }
   }
   return pc;
@@ -435,10 +587,27 @@ export function drawSilhouette(
   width: number,
   height: number,
   color: Rgb,
-  kind: 'hills' | 'trees',
+  kind: 'hills' | 'trees' | 'spikes',
   seed: number,
 ): PixelCanvas {
   const pc = new PixelCanvas(width, height);
+  if (kind === 'spikes') {
+    // Stalagmity: úzke špicaté veže.
+    const count = Math.floor(width / 18);
+    for (let i = 0; i < count; i++) {
+      const cx = Math.floor((i + pixelNoise(i, 0, seed) * 0.7) * (width / count));
+      const h = height * (0.3 + pixelNoise(i, 1, seed) * 0.65);
+      const w = 4 + Math.floor(pixelNoise(i, 2, seed) * 7);
+      for (let y = 0; y < h; y++) {
+        const half = Math.floor((y / h) * w);
+        for (let x = -half; x <= half; x++)
+          pc.set((((cx + x) % width) + width) % width, Math.floor(height - h + y), color);
+      }
+    }
+    for (let y = Math.floor(height * 0.9); y < height; y++)
+      for (let x = 0; x < width; x++) pc.set(x, y, color);
+    return pc;
+  }
   if (kind === 'hills') {
     for (let x = 0; x < width; x++) {
       const a = (x / width) * Math.PI * 2;

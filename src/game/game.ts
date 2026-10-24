@@ -7,6 +7,8 @@ export interface Input {
   down: boolean;
   jump: boolean;
   flare: boolean;
+  /** Hod iskry. */
+  spark: boolean;
 }
 
 export const NO_INPUT: Input = {
@@ -15,6 +17,7 @@ export const NO_INPUT: Input = {
   down: false,
   jump: false,
   flare: false,
+  spark: false,
 };
 
 // --- Pohyb (px, s) ---
@@ -41,6 +44,16 @@ export const LIGHT_RADIUS = 78;
 export const FLARE_RADIUS = 150;
 export const EMBER_RADIUS = 20;
 export const LANTERN_RADIUS = 72;
+export const SPARK_OIL = 4;
+const SPARK_SPEED = 230;
+const SPARK_LIFE = 0.8;
+const SPARK_COOLDOWN = 0.35;
+export const SPARK_RADIUS = 34;
+const STOMP_BOUNCE = 260;
+/** Koľko oleja za sekundu vypije jedna mora prisatá k lampášu. */
+export const MOTH_DRAIN = 4;
+const CRUMBLE_DELAY = 0.45;
+const CRUMBLE_RESPAWN = 3;
 /** Koľko sekúnd vydrží hráč v úplnej tme (bez oleja), kým ho tma pohltí. */
 export const DREAD_LIMIT = 4;
 const RESPAWN_DELAY = 1.1;
@@ -54,10 +67,17 @@ export type GameEvent =
   | { type: 'flare' }
   | { type: 'hurt' }
   | { type: 'shadeDie'; x: number; y: number }
+  | { type: 'mothDie'; x: number; y: number }
+  | { type: 'stomp'; x: number; y: number }
+  | { type: 'throw' }
+  | { type: 'fizzle'; x: number; y: number }
+  | { type: 'crumble'; x: number; y: number }
   | { type: 'lunge' }
-  | { type: 'died'; cause: 'thorns' | 'fall' | 'dark' }
+  | { type: 'died'; cause: DeathCause }
   | { type: 'respawn' }
   | { type: 'exit' };
+
+export type DeathCause = 'thorns' | 'fall' | 'dark' | 'water';
 
 export interface Player {
   /** Ľavý horný roh hitboxu. */
@@ -89,6 +109,34 @@ export interface Shade {
   burning: boolean;
 }
 
+/** Mora: letí za svetlom a pije olej z lampáša. */
+export interface Moth {
+  x: number;
+  y: number;
+  home: Point;
+  vx: number;
+  vy: number;
+  alive: boolean;
+  /** Prisatá k lampášu (pije olej). */
+  drinking: boolean;
+  phase: number;
+  hp: number;
+}
+
+export interface Spark {
+  x: number;
+  y: number;
+  vx: number;
+  life: number;
+}
+
+export interface Crumble {
+  col: number;
+  row: number;
+  state: 'solid' | 'shaking' | 'gone';
+  timer: number;
+}
+
 export interface Pickup extends Point {
   taken: boolean;
 }
@@ -116,6 +164,12 @@ export class Game {
   readonly crystals: Pickup[];
   readonly lanterns: Lantern[];
   readonly shades: Shade[];
+  readonly moths: Moth[];
+  readonly sparks: Spark[] = [];
+  readonly crumbles: Crumble[] = [];
+  private crumbleAt = new Map<number, Crumble>();
+  private sparkCooldown = 0;
+  private sparkHeld = false;
   exitLit = false;
   /** Tabuľa, pri ktorej hráč stojí (rada na obrazovke). */
   sign: Sign | null = null;
@@ -160,6 +214,28 @@ export class Game {
       dirY: 0,
       burning: false,
     }));
+    this.moths = level.moths.map((p) => ({
+      x: p.x,
+      y: p.y,
+      home: { ...p },
+      vx: 0,
+      vy: 0,
+      alive: true,
+      drinking: false,
+      phase: this.rng.next() * Math.PI * 2,
+      hp: 1,
+    }));
+    level.tiles.forEach((tile, i) => {
+      if (tile !== Tile.Crumble) return;
+      const c: Crumble = {
+        col: i % level.width,
+        row: Math.floor(i / level.width),
+        state: 'solid',
+        timer: 0,
+      };
+      this.crumbles.push(c);
+      this.crumbleAt.set(i, c);
+    });
   }
 
   /** Stred hráča. */
@@ -187,6 +263,7 @@ export class Game {
     for (const l of this.lanterns)
       if (l.lit) lights.push({ x: l.x, y: l.y, radius: LANTERN_RADIUS });
     if (this.exitLit) lights.push({ ...this.level.exit, radius: LANTERN_RADIUS * 1.5 });
+    for (const sp of this.sparks) lights.push({ x: sp.x, y: sp.y, radius: SPARK_RADIUS });
     return lights;
   }
 
@@ -209,11 +286,18 @@ export class Game {
       this.deadTimer -= dt;
       if (this.deadTimer <= 0) this.respawn();
       this.updateShades(dt);
+      this.updateMoths(dt);
+      this.updateSparks(dt);
+      this.updateCrumbles(dt);
       return this.events;
     }
     this.updateLight(dt, input);
+    this.updateCrumbles(dt);
     this.updatePlayer(dt, input);
+    this.throwSpark(dt, input);
+    this.updateSparks(dt);
     if (this.state === 'play') this.updateShades(dt);
+    if (this.state === 'play') this.updateMoths(dt);
     if (this.state === 'play') this.collect();
     return this.events;
   }
@@ -270,6 +354,7 @@ export class Game {
     if (p.onGround && !wasOnGround) this.events.push({ type: 'land' });
 
     if (this.touchesThorns()) this.die('thorns');
+    else if (this.inWater()) this.die('water');
     else if (p.y > this.level.height * TILE + 48) this.die('fall');
   }
 
@@ -277,6 +362,8 @@ export class Game {
   private solid(col: number, row: number, lights: LightSource[], overlapping: boolean): boolean {
     const tile = tileAt(this.level, col, row);
     if (tile === Tile.Ground) return true;
+    if (tile === Tile.Crumble)
+      return this.crumbleAt.get(row * this.level.width + col)?.state !== 'gone';
     if (tile === Tile.Light) return !overlapping && this.isTileLit(col, row, lights);
     return false;
   }
@@ -324,6 +411,14 @@ export class Game {
           p.y = row * TILE - PLAYER_H;
           p.vy = 0;
           p.onGround = true;
+          // Drobiace sa kamene pod nohami sa začnú rozpadávať.
+          for (let c = left; c <= right; c++) {
+            const crumble = this.crumbleAt.get(row * this.level.width + c);
+            if (crumble?.state === 'solid') {
+              crumble.state = 'shaking';
+              crumble.timer = CRUMBLE_DELAY;
+            }
+          }
           return;
         }
       }
@@ -355,12 +450,146 @@ export class Game {
     return false;
   }
 
+  private inWater(): boolean {
+    const c = this.center;
+    const col = Math.floor(c.x / TILE);
+    const row = Math.floor((c.y + 2) / TILE);
+    return tileAt(this.level, col, row) === Tile.Water;
+  }
+
+  private updateCrumbles(dt: number): void {
+    for (const c of this.crumbles) {
+      if (c.state === 'solid') continue;
+      c.timer -= dt;
+      if (c.timer > 0) continue;
+      if (c.state === 'shaking') {
+        c.state = 'gone';
+        c.timer = CRUMBLE_RESPAWN;
+        this.events.push({ type: 'crumble', x: c.col * TILE + TILE / 2, y: c.row * TILE + 4 });
+      } else if (!this.overlapsTileAt(c.col, c.row, this.player.x, this.player.y)) {
+        c.state = 'solid';
+      }
+    }
+  }
+
+  private throwSpark(dt: number, input: Input): void {
+    this.sparkCooldown = Math.max(0, this.sparkCooldown - dt);
+    const pressed = input.spark && !this.sparkHeld;
+    this.sparkHeld = input.spark;
+    if (!pressed || this.sparkCooldown > 0 || this.oil <= SPARK_OIL || this.state !== 'play')
+      return;
+    this.oil -= SPARK_OIL;
+    this.sparkCooldown = SPARK_COOLDOWN;
+    const lamp = this.lamp;
+    this.sparks.push({
+      x: lamp.x,
+      y: lamp.y,
+      vx: this.player.facing * SPARK_SPEED + this.player.vx * 0.3,
+      life: SPARK_LIFE,
+    });
+    this.events.push({ type: 'throw' });
+  }
+
+  private updateSparks(dt: number): void {
+    for (let i = this.sparks.length - 1; i >= 0; i--) {
+      const sp = this.sparks[i]!;
+      sp.x += sp.vx * dt;
+      sp.life -= dt;
+      const col = Math.floor(sp.x / TILE);
+      const row = Math.floor(sp.y / TILE);
+      const tile = tileAt(this.level, col, row);
+      const blocked =
+        tile === Tile.Ground ||
+        tile === Tile.Water ||
+        (tile === Tile.Crumble &&
+          this.crumbleAt.get(row * this.level.width + col)?.state !== 'gone');
+      let hit = false;
+      for (const s of this.shades) {
+        if (!s.alive || Math.hypot(s.x - sp.x, s.y - sp.y) > 11) continue;
+        this.killShade(s);
+        hit = true;
+      }
+      for (const m of this.moths) {
+        if (!m.alive || Math.hypot(m.x - sp.x, m.y - sp.y) > 9) continue;
+        this.killMoth(m);
+        hit = true;
+      }
+      if (blocked || hit || sp.life <= 0) {
+        this.sparks.splice(i, 1);
+        if (!hit) this.events.push({ type: 'fizzle', x: sp.x, y: sp.y });
+      }
+    }
+  }
+
+  private killShade(s: Shade): void {
+    s.alive = false;
+    this.events.push({ type: 'shadeDie', x: s.x, y: s.y });
+  }
+
+  private killMoth(m: Moth): void {
+    m.alive = false;
+    m.drinking = false;
+    this.events.push({ type: 'mothDie', x: m.x, y: m.y });
+  }
+
+  /** Skok na hlavu: padajúci hráč tieň rozplynie a odrazí sa. */
+  private tryStomp(s: Shade): boolean {
+    const p = this.player;
+    if (this.state !== 'play' || p.vy <= 0) return false;
+    const feet = p.y + PLAYER_H;
+    if (Math.abs(p.x + PLAYER_W / 2 - s.x) > 10 || feet < s.y - 9 || feet > s.y + 4) return false;
+    this.killShade(s);
+    p.vy = -(this.jumpHeld ? JUMP_SPEED : STOMP_BOUNCE);
+    p.onGround = false;
+    this.events.push({ type: 'stomp', x: s.x, y: s.y });
+    return true;
+  }
+
+  private updateMoths(dt: number): void {
+    const lamp = this.lamp;
+    const alive = this.state === 'play';
+    for (const m of this.moths) {
+      if (!m.alive) continue;
+      m.phase += dt * 9;
+      const dx = lamp.x - m.x;
+      const dy = lamp.y - m.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      const attracted = alive && dist < this.radius * 1.5 + 30;
+      // Rozžiarený lampáš mory spáli.
+      if (alive && this.flaring && dist < this.radius * 0.9) {
+        m.hp -= dt * 4;
+        if (m.hp <= 0) {
+          this.killMoth(m);
+          continue;
+        }
+      }
+      let tx = m.home.x + Math.sin(m.phase * 0.2) * 10;
+      let ty = m.home.y + Math.cos(m.phase * 0.27) * 6;
+      if (attracted) {
+        // Krúži tesne okolo plameňa.
+        tx = lamp.x + Math.cos(m.phase * 0.5) * 7;
+        ty = lamp.y + Math.sin(m.phase * 0.7) * 5;
+      }
+      const speed = attracted ? 75 : 30;
+      const ddx = tx - m.x;
+      const ddy = ty - m.y;
+      const d = Math.hypot(ddx, ddy) || 1;
+      m.vx += ((ddx / d) * Math.min(speed, d * 4) - m.vx) * Math.min(1, dt * 5);
+      m.vy += ((ddy / d) * Math.min(speed, d * 4) - m.vy) * Math.min(1, dt * 5);
+      // Trepotanie krídel.
+      m.x += m.vx * dt + Math.sin(m.phase * 1.7) * 0.4;
+      m.y += m.vy * dt + Math.cos(m.phase * 2.3) * 0.4;
+      m.drinking = alive && dist < 14;
+      if (m.drinking) this.oil = Math.max(0, this.oil - MOTH_DRAIN * dt);
+    }
+  }
+
   private updateShades(dt: number): void {
     const c = this.center;
     const lights = this.lights();
     const playerLight = this.state === 'dead' ? 0 : this.radius;
     for (const s of this.shades) {
-      if (!s.alive) continue;
+      if (!s.alive || this.tryStomp(s)) continue;
       const dx = c.x - s.x;
       const dy = c.y - s.y;
       const dist = Math.hypot(dx, dy) || 1;
@@ -388,8 +617,7 @@ export class Game {
         s.vy += ((s.y - l.y) / away) * 260 * dt;
       }
       if (s.hp <= 0) {
-        s.alive = false;
-        this.events.push({ type: 'shadeDie', x: s.x, y: s.y });
+        this.killShade(s);
         continue;
       }
       if (!s.burning) s.hp = Math.min(1, s.hp + dt * 0.3);
@@ -482,7 +710,7 @@ export class Game {
     this.sign = this.level.signs.find((s) => near(s, 28)) ?? null;
   }
 
-  private die(cause: 'thorns' | 'fall' | 'dark'): void {
+  private die(cause: DeathCause): void {
     if (this.state !== 'play') return;
     this.state = 'dead';
     this.deaths++;
@@ -497,6 +725,13 @@ export class Game {
     this.oil = OIL_MAX;
     this.radius = LIGHT_RADIUS;
     this.dread = 0;
+    this.sparks.length = 0;
+    for (const m of this.moths) {
+      m.x = m.home.x;
+      m.y = m.home.y;
+      m.vx = m.vy = 0;
+      m.drinking = false;
+    }
     for (const s of this.shades) {
       if (!s.alive) continue;
       s.x = s.home.x;

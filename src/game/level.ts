@@ -6,7 +6,9 @@
  *   ^  tŕne                 P  štart
  *   f  svetluška            *  svetelný kryštál (tajomstvo)
  *   L  lampa (checkpoint)   E  vatra na konci
- *   s  tieň                 1–9  tabuľa s radou
+ *   s  tieň                 m  mora (pije olej)
+ *   w  voda (smrteľná)      c  drobiaci sa kameň
+ *   1–9  tabuľa s radou
  */
 export const TILE = 16;
 
@@ -16,7 +18,11 @@ export enum Tile {
   Ledge,
   Light,
   Thorns,
+  Water,
+  Crumble,
 }
+
+export type World = 'forest' | 'caves';
 
 export interface Point {
   x: number;
@@ -31,6 +37,7 @@ export interface LevelDef {
   id: string;
   /** Kľúč názvu v i18n. */
   name: string;
+  world: World;
   /** Kľúče rád pre tabule 1–9 (index 0 = tabuľa „1“). */
   hints?: string[];
   rows: string[];
@@ -39,6 +46,7 @@ export interface LevelDef {
 export interface Level {
   id: string;
   name: string;
+  world: World;
   width: number;
   height: number;
   tiles: Tile[];
@@ -47,6 +55,7 @@ export interface Level {
   crystals: Point[];
   lanterns: Point[];
   shades: Point[];
+  moths: Point[];
   signs: Sign[];
   exit: Point;
 }
@@ -56,6 +65,8 @@ const TILES: Record<string, Tile> = {
   '-': Tile.Ledge,
   '=': Tile.Light,
   '^': Tile.Thorns,
+  w: Tile.Water,
+  c: Tile.Crumble,
 };
 
 /** Stred políčka v pixeloch. */
@@ -70,6 +81,7 @@ export function parseLevel(def: LevelDef): Level {
   const level: Level = {
     id: def.id,
     name: def.name,
+    world: def.world,
     width,
     height,
     tiles: new Array<Tile>(width * height).fill(Tile.Empty),
@@ -78,6 +90,7 @@ export function parseLevel(def: LevelDef): Level {
     crystals: [],
     lanterns: [],
     shades: [],
+    moths: [],
     signs: [],
     exit: { x: 0, y: 0 },
   };
@@ -99,6 +112,7 @@ export function parseLevel(def: LevelDef): Level {
       else if (ch === '*') level.crystals.push(c);
       else if (ch === 'L') level.lanterns.push(c);
       else if (ch === 's') level.shades.push(c);
+      else if (ch === 'm') level.moths.push(c);
       else if (ch === 'E') {
         level.exit = c;
         hasExit = true;

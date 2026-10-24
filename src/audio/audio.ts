@@ -158,7 +158,25 @@ export class Sound {
           this.sweep(700, 120, 'triangle', 0.1, 0.5);
           this.noise(0.4, 3000, 0.06, 'highpass');
           break;
+        case 'throw':
+          this.sweep(500, 1400, 'triangle', 0.06, 0.15);
+          this.noise(0.15, 3000, 0.05, 'highpass');
+          break;
+        case 'stomp':
+          this.sweep(180, 60, 'square', 0.1, 0.12);
+          this.sweep(500, 900, 'square', 0.05, 0.1);
+          break;
+        case 'mothDie':
+          this.sweep(1200, 400, 'triangle', 0.06, 0.2);
+          break;
+        case 'fizzle':
+          this.noise(0.12, 4000, 0.04, 'highpass');
+          break;
+        case 'crumble':
+          this.noise(0.4, 300, 0.12);
+          break;
         case 'died':
+          if (e.cause === 'water') this.noise(0.6, 900, 0.15, 'bandpass');
           this.sweep(440, 60, 'triangle', 0.14, 1);
           break;
         case 'respawn':

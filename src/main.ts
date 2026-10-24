@@ -63,6 +63,27 @@ function levelName(index: number): string {
   return hasKey(name) ? t(name) : name;
 }
 
+const WORLD_NAMES: Record<string, Key> = { forest: 'world1', caves: 'world2' };
+
+/** „Zatopené jaskyne 2/4“ — poradie levelu v rámci jeho sveta. */
+function levelLabel(index: number): string {
+  const world = LEVELS[index]!.world;
+  const inWorld = LEVELS.filter((l) => l.world === world);
+  return t('levelLabel', {
+    world: t(WORLD_NAMES[world]!),
+    n: inWorld.indexOf(LEVELS[index]!) + 1,
+    total: inWorld.length,
+  });
+}
+
+function clearSave(): void {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch {
+    // úložisko nedostupné
+  }
+}
+
 function hintText(key: string): string {
   const touchKey = `${key}Touch`;
   if (controls.touchMode && hasKey(touchKey)) return t(touchKey);
@@ -71,8 +92,15 @@ function hintText(key: string): string {
 
 function refreshTexts(): void {
   $('.tagline').textContent = t('tagline');
-  $('.play').textContent = t('play');
   const save = readSave();
+  // S uloženým postupom: veľké „Pokračovať“ a menšie „Nová hra“ (s potvrdením).
+  const play = $<HTMLButtonElement>('.play');
+  const newGame = $<HTMLButtonElement>('.new-game');
+  play.hidden = save.unlocked > 0;
+  play.textContent = t('play');
+  newGame.hidden = save.unlocked === 0;
+  newGame.textContent = t('newGame');
+  newGame.dataset.confirm = '';
   const cont = $<HTMLButtonElement>('.continue');
   const resumeAt = Math.min(save.unlocked, LEVELS.length - 1);
   cont.hidden = save.unlocked === 0;
@@ -146,15 +174,8 @@ async function startLevel(index: number): Promise<void> {
   hud.hidden = false;
   touch.hidden = !controls.touchMode;
   document.body.classList.add('playing');
-  $('.level-label').textContent = t('levelLabel', {
-    world: t('world1'),
-    n: index + 1,
-    total: LEVELS.length,
-  });
-  showBanner(
-    levelName(index),
-    t('levelLabel', { world: t('world1'), n: index + 1, total: LEVELS.length }),
-  );
+  $('.level-label').textContent = levelLabel(index);
+  showBanner(levelName(index), levelLabel(index));
   if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug'))
     (window as unknown as { __lumen: unknown }).__lumen = { game, renderer };
 }
@@ -185,6 +206,17 @@ function setPaused(value: boolean): void {
 }
 
 $('.play').addEventListener('click', () => void startLevel(0));
+$('.new-game').addEventListener('click', (e) => {
+  const button = e.currentTarget as HTMLButtonElement;
+  if (!button.dataset.confirm) {
+    button.dataset.confirm = '1';
+    button.textContent = t('newGameConfirm');
+    return;
+  }
+  clearSave();
+  refreshTexts();
+  void startLevel(0);
+});
 $('.continue').addEventListener(
   'click',
   () => void startLevel(Math.min(readSave().unlocked, LEVELS.length - 1)),
@@ -229,6 +261,15 @@ function finishLevel(g: Game): void {
     time: formatTime(g.time),
     d: g.deaths,
   });
+  // Posledný level sveta (nie celej hry): ohlási ďalší svet.
+  const doneWorld = $('.done-world');
+  const next = LEVELS[levelIndex + 1];
+  doneWorld.hidden = !next || next.world === def.world;
+  if (next)
+    doneWorld.textContent = t('worldDone', {
+      world: t(WORLD_NAMES[def.world]!),
+      next: t(WORLD_NAMES[next.world]!),
+    });
   hint.hidden = true;
   touch.hidden = true;
   show(done);
@@ -261,7 +302,15 @@ function onEvents(events: GameEvent[]): void {
       window.setTimeout(() => (hurt.style.opacity = '0'), 160);
     } else if (e.type === 'died') {
       showToast(
-        t(e.cause === 'thorns' ? 'diedThorns' : e.cause === 'fall' ? 'diedFall' : 'diedDark'),
+        t(
+          e.cause === 'thorns'
+            ? 'diedThorns'
+            : e.cause === 'fall'
+              ? 'diedFall'
+              : e.cause === 'water'
+                ? 'diedWater'
+                : 'diedDark',
+        ),
       );
     } else if (e.type === 'exit') {
       doneTimer = 1.8;
