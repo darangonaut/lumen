@@ -295,6 +295,8 @@ const STEP = 1 / 60;
 let last = performance.now();
 let acc = 0;
 function frame(now: number): void {
+  // Ďalší snímok sa naplánuje hneď, aby chyba v jednom snímku nezastavila hru.
+  requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (game && !paused) {
@@ -316,7 +318,6 @@ function frame(now: number): void {
     updateHud(game);
     sound.update(dt, game.oil <= 0 ? 1 : game.shades.some((s) => s.alive && s.active) ? 0.6 : 0);
   }
-  requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 

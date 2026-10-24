@@ -175,7 +175,9 @@ export class Renderer {
   setGame(game: Game): void {
     this.game = game;
     const level = game.level;
-    for (const child of this.world.removeChildren()) child.destroy({ children: true });
+    // Vrstva tmy sa používa ďalej, ostatné sa zahodí.
+    for (const child of this.world.removeChildren())
+      if (child !== this.darkSprite) child.destroy({ children: true });
     this.level = new Container();
     this.actors = new Container();
     this.particlesBelow = new Container();
