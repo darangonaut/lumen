@@ -142,7 +142,11 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.langs button')) {
 }
 
 // --- Obrazovky ---
+/** Kedy sa ukázala obrazovka po leveli (medzerník ju nepreskočí hneď, keď ešte skáčeš). */
+let doneShownAt = 0;
+
 function show(screen: HTMLElement | null): void {
+  if (screen === done && done.hidden) doneShownAt = performance.now();
   for (const s of [start, pausedScreen, done, victory]) s.hidden = s !== screen;
   if (screen === start) title.run();
   else title.stop();
@@ -251,7 +255,12 @@ $('.replay').addEventListener('click', () => void startLevel(levelIndex));
 $('.victory-menu').addEventListener('click', () => toMenu());
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape' || e.code === 'KeyP') setPaused(!paused);
-  else if (e.code === 'Enter' && !done.hidden) $<HTMLButtonElement>('.next').click();
+  else if ((e.code === 'Enter' || e.code === 'Space') && !done.hidden) {
+    // Medzerník je aj skok: len nové stlačenie a až chvíľu po zobrazení obrazovky.
+    e.preventDefault();
+    if (e.code === 'Space' && (e.repeat || performance.now() - doneShownAt < 500)) return;
+    $<HTMLButtonElement>('.next').click();
+  }
 });
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && game && !paused && game.state !== 'done') setPaused(true);
