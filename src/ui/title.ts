@@ -77,34 +77,20 @@ export class TitleScene {
     const { w, h } = this;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     const sky = ctx.createLinearGradient(0, 0, 0, h);
-    sky.addColorStop(0, '#0b0820');
-    sky.addColorStop(0.45, '#251f4a');
-    sky.addColorStop(0.78, '#3c5a7c');
-    sky.addColorStop(1, '#86b0aa');
+    sky.addColorStop(0, '#05040f');
+    sky.addColorStop(0.45, '#141030');
+    sky.addColorStop(0.78, '#1f3049');
+    sky.addColorStop(1, '#3e5a62');
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, w, h);
     for (let i = 0; i < 140; i++) {
-      ctx.fillStyle = `rgba(235,235,255,${(0.25 + rand(i, 5) * 0.6).toFixed(2)})`;
+      ctx.fillStyle = `rgba(235,235,255,${(0.15 + rand(i, 5) * 0.45).toFixed(2)})`;
       ctx.beginPath();
       ctx.arc(rand(i, 6) * w, rand(i, 7) * h * 0.6, 0.4 + rand(i, 8) * 1.1, 0, Math.PI * 2);
       ctx.fill();
     }
-    // Mesiac so žiarou.
-    const mx = w * 0.8;
-    const my = h * 0.2;
-    const mr = Math.min(w, h) * 0.05;
-    const halo = ctx.createRadialGradient(mx, my, mr * 0.8, mx, my, mr * 5);
-    halo.addColorStop(0, 'rgba(220,228,255,0.35)');
-    halo.addColorStop(1, 'rgba(220,228,255,0)');
-    ctx.fillStyle = halo;
-    ctx.fillRect(mx - mr * 5, my - mr * 5, mr * 10, mr * 10);
-    ctx.fillStyle = '#e6ecff';
-    ctx.beginPath();
-    ctx.arc(mx, my, mr, 0, Math.PI * 2);
-    ctx.fill();
-
     // Vzdialené kopce s hmlou.
-    ctx.fillStyle = '#1a2b44';
+    ctx.fillStyle = '#0f1828';
     ctx.beginPath();
     ctx.moveTo(0, h);
     for (let x = 0; x <= w; x += 4) {
@@ -115,12 +101,12 @@ export class TitleScene {
     ctx.fill();
     const fog = ctx.createLinearGradient(0, h * 0.6, 0, h);
     fog.addColorStop(0, 'rgba(120,160,175,0)');
-    fog.addColorStop(1, 'rgba(120,160,175,0.35)');
+    fog.addColorStop(1, 'rgba(90,120,140,0.2)');
     ctx.fillStyle = fog;
     ctx.fillRect(0, h * 0.55, w, h * 0.45);
 
     // Smreky.
-    ctx.fillStyle = '#0b1322';
+    ctx.fillStyle = '#070c16';
     const trees = Math.ceil(w / 50);
     for (let i = 0; i < trees; i++) {
       const x = (i + rand(i, 9) * 0.7) * (w / trees);
@@ -172,8 +158,17 @@ export class TitleScene {
     const lx = x + (GIRL_LANTERN.x - 7) * s;
     const ly = y + (GIRL_LANTERN.y - 15.4 + dy) * s;
 
+    // Tma ako v hre: všade okrem kruhu svetla okolo lampáša, okraje ešte tmavšie.
+    const dark = ctx.createRadialGradient(lx, ly, 0, lx, ly, Math.max(w, h) * 0.9);
+    dark.addColorStop(0, 'rgba(4,3,10,0)');
+    dark.addColorStop(Math.min(0.5, (45 * s) / Math.max(w, h)), 'rgba(4,3,10,0.45)');
+    dark.addColorStop(1, 'rgba(4,3,10,0.75)');
+    ctx.fillStyle = dark;
+    ctx.fillRect(0, 0, w, h);
+    this.drawMoon(ctx);
+
     // Teplá žiara lampáša.
-    const r = 60 * s * flicker;
+    const r = 45 * s * flicker;
     const glow = ctx.createRadialGradient(lx, ly, 0, lx, ly, r);
     glow.addColorStop(0, 'rgba(255,220,140,0.5)');
     glow.addColorStop(0.3, 'rgba(255,170,80,0.2)');
@@ -215,6 +210,23 @@ export class TitleScene {
       ctx.fillStyle = g;
       ctx.fillRect(fx - 8, fy - 8, 16, 16);
     }
+  }
+
+  /** Mesiac so žiarou (kreslí sa nad tmou, aby ostal jasný). */
+  private drawMoon(ctx: CanvasRenderingContext2D): void {
+    const { w, h } = this;
+    const mx = w * 0.8;
+    const my = h * 0.2;
+    const mr = Math.min(w, h) * 0.05;
+    const halo = ctx.createRadialGradient(mx, my, mr * 0.8, mx, my, mr * 5);
+    halo.addColorStop(0, 'rgba(220,228,255,0.22)');
+    halo.addColorStop(1, 'rgba(220,228,255,0)');
+    ctx.fillStyle = halo;
+    ctx.fillRect(mx - mr * 5, my - mr * 5, mr * 10, mr * 10);
+    ctx.fillStyle = '#e6ecff';
+    ctx.beginPath();
+    ctx.arc(mx, my, mr, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   /** Postavička (ten istý tvar ako v hre); s = mierka. */
