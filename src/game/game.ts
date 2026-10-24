@@ -45,7 +45,7 @@ export const OIL_DRAIN = 0.95;
 export const FLARE_DRAIN = 16;
 export const FIREFLY_OIL = 8;
 const SHADE_HIT_OIL = 18;
-export const LIGHT_RADIUS = 78;
+export const LIGHT_RADIUS = 50;
 export const FLARE_RADIUS = 150;
 export const EMBER_RADIUS = 20;
 export const LANTERN_RADIUS = 72;
@@ -192,7 +192,12 @@ export interface Lantern extends Point {
 
 export interface LightSource extends Point {
   radius: number;
+  /** Dosah, na ktorý zhmotňuje svetelné plošiny (ak sa líši od polomeru). */
+  reach?: number;
 }
+
+/** Svetelné plošiny lampáš zhmotní o kúsok ďalej, než siaha viditeľné svetlo. */
+const LAMP_REACH_BONUS = 28;
 
 export class Game {
   readonly player: Player;
@@ -332,7 +337,8 @@ export class Game {
   /** Všetky svetlá, ktoré odháňajú tiene a zhmotňujú svetelné plošiny. */
   lights(): LightSource[] {
     const lights: LightSource[] = [];
-    if (this.state !== 'dead') lights.push({ ...this.lamp, radius: this.radius });
+    if (this.state !== 'dead')
+      lights.push({ ...this.lamp, radius: this.radius, reach: this.radius + LAMP_REACH_BONUS });
     for (const l of this.lanterns)
       if (l.lit) lights.push({ x: l.x, y: l.y, radius: LANTERN_RADIUS });
     if (this.exitLit) lights.push({ ...this.level.exit, radius: LANTERN_RADIUS * 1.5 });
@@ -347,7 +353,7 @@ export class Game {
     return lights.some((l) => {
       const nx = Math.max(x0, Math.min(l.x, x0 + TILE));
       const ny = Math.max(y0, Math.min(l.y, y0 + TILE));
-      return Math.hypot(l.x - nx, l.y - ny) < l.radius * 0.85;
+      return Math.hypot(l.x - nx, l.y - ny) < (l.reach ?? l.radius) * 0.85;
     });
   }
 

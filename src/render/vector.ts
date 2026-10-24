@@ -485,7 +485,7 @@ const WORLDS: Record<World, WorldStyle> = {
     waterLine: '#7fd0e0',
     top: 'grass',
     under: 'roots',
-    info: { darkness: 0.6, moon: true, ambient: 'motes' },
+    info: { darkness: 0.8, moon: true, ambient: 'motes' },
   },
   caves: {
     sky: ['#04070f', '#081628', '#0f3346', '#1d5a68'],
@@ -499,7 +499,7 @@ const WORLDS: Record<World, WorldStyle> = {
     waterLine: '#7fd0e0',
     top: 'moss',
     under: 'stalactites',
-    info: { darkness: 0.7, moon: false, ambient: 'motes' },
+    info: { darkness: 0.88, moon: false, ambient: 'motes' },
   },
   swamp: {
     sky: ['#081210', '#142a24', '#2a4c40', '#7a9c6c'],
@@ -513,7 +513,7 @@ const WORLDS: Record<World, WorldStyle> = {
     waterLine: '#9ad08a',
     top: 'reeds',
     under: 'roots',
-    info: { darkness: 0.66, moon: true, ambient: 'wisps' },
+    info: { darkness: 0.84, moon: true, ambient: 'wisps' },
   },
   ice: {
     sky: ['#0b1530', '#1d3864', '#5682ac', '#c4dcee'],
@@ -527,7 +527,7 @@ const WORLDS: Record<World, WorldStyle> = {
     waterLine: '#cfeeff',
     top: 'snow',
     under: 'icicles',
-    info: { darkness: 0.5, moon: true, ambient: 'snow' },
+    info: { darkness: 0.74, moon: true, ambient: 'snow' },
   },
   tower: {
     sky: ['#09070f', '#1a162c', '#372d4c', '#66566c'],
@@ -541,7 +541,7 @@ const WORLDS: Record<World, WorldStyle> = {
     waterLine: '#b0a0d0',
     top: 'stone',
     under: 'chains',
-    info: { darkness: 0.68, moon: true, ambient: 'dust' },
+    info: { darkness: 0.85, moon: true, ambient: 'dust' },
   },
   abyss: {
     sky: ['#040106', '#170610', '#3a0d1a', '#762824'],
@@ -555,7 +555,7 @@ const WORLDS: Record<World, WorldStyle> = {
     waterLine: '#ff7a5a',
     top: 'spikes',
     under: 'stalactites',
-    info: { darkness: 0.78, moon: false, ambient: 'embers' },
+    info: { darkness: 0.92, moon: false, ambient: 'embers' },
   },
 };
 

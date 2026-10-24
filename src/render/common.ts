@@ -54,7 +54,7 @@ export function lightCanvas(size: number, inner = 0.3): HTMLCanvasElement {
   const r = size / 2;
   const g = ctx.createRadialGradient(r, r, r * inner, r, r, r);
   g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.6, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.55, 'rgba(255,255,255,0.45)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
