@@ -21,13 +21,14 @@ export const NO_INPUT: Input = {
 };
 
 // --- Pohyb (px, s) ---
-export const GRAVITY = 1100;
-const MAX_FALL = 380;
-export const RUN_SPEED = 105;
-const GROUND_ACCEL = 1000;
-const AIR_ACCEL = 650;
-const FRICTION = 1200;
-export const JUMP_SPEED = 345;
+// Pokojné tempo kvôli temnej atmosfére; skok je pomalší a plávavejší, s podobným dosahom ako predtým.
+export const GRAVITY = 720;
+const MAX_FALL = 310;
+export const RUN_SPEED = 85;
+const GROUND_ACCEL = 650;
+const AIR_ACCEL = 450;
+const FRICTION = 800;
+export const JUMP_SPEED = 288;
 const JUMP_CUT = 0.45;
 const COYOTE = 0.1;
 const JUMP_BUFFER = 0.12;
@@ -36,7 +37,7 @@ export const PLAYER_H = 13;
 
 // --- Svetlo a olej ---
 export const OIL_MAX = 100;
-export const OIL_DRAIN = 1.2;
+export const OIL_DRAIN = 0.95;
 export const FLARE_DRAIN = 16;
 export const FIREFLY_OIL = 8;
 const SHADE_HIT_OIL = 18;
@@ -45,14 +46,14 @@ export const FLARE_RADIUS = 150;
 export const EMBER_RADIUS = 20;
 export const LANTERN_RADIUS = 72;
 export const SPARK_OIL = 4;
-const SPARK_SPEED = 230;
+const SPARK_SPEED = 190;
 const SPARK_LIFE = 0.8;
 const SPARK_COOLDOWN = 0.35;
 export const SPARK_RADIUS = 34;
-const STOMP_BOUNCE = 260;
+const STOMP_BOUNCE = 210;
 /** Koľko oleja za sekundu vypije jedna mora prisatá k lampášu. */
 export const MOTH_DRAIN = 4;
-const CRUMBLE_DELAY = 0.45;
+const CRUMBLE_DELAY = 0.6;
 const CRUMBLE_RESPAWN = 3;
 /** Koľko sekúnd vydrží hráč v úplnej tme (bez oleja), kým ho tma pohltí. */
 export const DREAD_LIMIT = 4;
@@ -570,7 +571,7 @@ export class Game {
         tx = lamp.x + Math.cos(m.phase * 0.5) * 7;
         ty = lamp.y + Math.sin(m.phase * 0.7) * 5;
       }
-      const speed = attracted ? 75 : 30;
+      const speed = attracted ? 60 : 24;
       const ddx = tx - m.x;
       const ddy = ty - m.y;
       const d = Math.hypot(ddx, ddy) || 1;
@@ -630,7 +631,7 @@ export class Game {
         s.angle = current + dt * 0.6;
         const tx = c.x + Math.cos(s.angle) * reach;
         const ty = c.y + Math.sin(s.angle) * reach * 0.8;
-        steer(s, tx, ty, 60, dt);
+        steer(s, tx, ty, 48, dt);
         if (s.timer <= 0 && dist < reach + 70 && this.state === 'play') {
           s.state = 'lunge';
           s.timer = 0.75;
@@ -639,13 +640,13 @@ export class Game {
           this.events.push({ type: 'lunge' });
         }
       } else if (s.state === 'lunge') {
-        const speed = s.burning ? 90 : 160;
+        const speed = s.burning ? 70 : 125;
         s.vx = s.dirX * speed;
         s.vy = s.dirY * speed;
         if (dist < 10 && this.player.invulnerable <= 0 && this.state === 'play') this.hurt(s);
         else if (s.timer <= 0) this.recoil(s);
       } else {
-        steer(s, s.x - dx, s.y - dy, 80, dt);
+        steer(s, s.x - dx, s.y - dy, 64, dt);
         if (s.timer <= 0) {
           s.state = 'stalk';
           // V úplnej tme sú tiene odvážnejšie.
@@ -672,8 +673,8 @@ export class Game {
     const p = this.player;
     this.oil = Math.max(0, this.oil - SHADE_HIT_OIL);
     p.invulnerable = 1.2;
-    p.vx = Math.sign(p.x + PLAYER_W / 2 - s.x || 1) * 170;
-    p.vy = -170;
+    p.vx = Math.sign(p.x + PLAYER_W / 2 - s.x || 1) * 140;
+    p.vy = -150;
     p.onGround = false;
     this.events.push({ type: 'hurt' });
     this.recoil(s);

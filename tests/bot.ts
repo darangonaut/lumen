@@ -41,7 +41,7 @@ export function botRun(game: Game, seconds = 180): { done: boolean; col: number;
         if (solidish(ahead(d), r) && !solidish(ahead(d), r - 1)) step = true;
       }
     }
-    if (p.onGround && (wall || gap || thorns || step)) hold = 0.3;
+    if (p.onGround && (wall || gap || thorns || step)) hold = 0.45;
     const jump = hold > 0;
     hold -= dt;
     // Preskočil vatru: vráti sa k nej pešo.

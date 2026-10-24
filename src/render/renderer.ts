@@ -486,9 +486,9 @@ export class Renderer {
     const c = game.center;
     const tx = c.x + game.player.facing * 22;
     const ty = c.y - 12;
-    const k = 1 - Math.exp(-dt * 5);
+    const k = 1 - Math.exp(-dt * 3.5);
     this.cam.x += (tx - this.cam.x) * k;
-    this.cam.y += (ty - this.cam.y) * (1 - Math.exp(-dt * 3.5));
+    this.cam.y += (ty - this.cam.y) * (1 - Math.exp(-dt * 2.5));
     this.clampCamera();
     this.shake = Math.max(0, this.shake - dt * 20);
     const sx = (Math.random() - 0.5) * this.shake;
