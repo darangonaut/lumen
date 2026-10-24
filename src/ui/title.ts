@@ -2,6 +2,8 @@
  * Úvodná scéna v siluetovom štýle: súmrak, kopce a smreky, na kopci postavička s lampášom,
  * okolo poletujú svetlušky a v lese občas zažmurkajú oči tieňa.
  */
+import { GIRL_LANTERN, drawGirl } from '@/render/girl';
+
 const INK = '#05060b';
 
 function rand(i: number, seed: number): number {
@@ -167,8 +169,8 @@ export class TitleScene {
     const flicker = 1 + Math.sin(t * 13) * 0.04 + Math.sin(t * 7.1) * 0.03;
     const dy = Math.sin(t * 1.4) * 0.3;
     // Lampáš v ruke (súradnice postavičky 0–14 × 0–17, nohy na y = 15.4).
-    const lx = x + (11.15 - 7) * s;
-    const ly = y + (11.8 - 15.4 + dy) * s;
+    const lx = x + (GIRL_LANTERN.x - 7) * s;
+    const ly = y + (GIRL_LANTERN.y - 15.4 + dy) * s;
 
     // Teplá žiara lampáša.
     const r = 60 * s * flicker;
@@ -215,7 +217,7 @@ export class TitleScene {
     }
   }
 
-  /** Postavička v kapucni (ten istý tvar ako v hre); s = mierka. */
+  /** Postavička (ten istý tvar ako v hre); s = mierka. */
   private drawHero(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -227,52 +229,15 @@ export class TitleScene {
     ctx.save();
     ctx.translate(x - 7 * s, y - 15.4 * s);
     ctx.scale(s, s);
-    ctx.fillStyle = INK;
-    ctx.strokeStyle = INK;
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 1.35;
-    for (const legX of [4.7, 7.3]) {
-      ctx.beginPath();
-      ctx.moveTo(legX, 12.6);
-      ctx.lineTo(legX, 15.4);
-      ctx.stroke();
-    }
-    ctx.beginPath();
-    ctx.moveTo(3.8, 6.6 + dy);
-    ctx.lineTo(8.6, 6.6 + dy);
-    ctx.lineTo(9.7, 13.1);
-    ctx.lineTo(7.6, 13.3);
-    ctx.lineTo(6.2, 12.7);
-    ctx.lineTo(4.9, 13.3);
-    ctx.lineTo(2.5, 13.2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(6.5, 4.5 + dy, 3.1, 0, Math.PI * 2);
-    ctx.fill();
-    // Cíp kapucne veje vo vetre.
-    const wave = Math.sin(t * 2) * 0.6;
-    ctx.beginPath();
-    ctx.moveTo(4.2, 2.4 + dy);
-    ctx.quadraticCurveTo(1.6 + wave, 4.2 + dy, 1 + wave, 8.4 + dy);
-    ctx.lineTo(4.6, 6.6 + dy);
-    ctx.closePath();
-    ctx.fill();
-    ctx.lineWidth = 1.3;
-    ctx.beginPath();
-    ctx.moveTo(8.1, 8.4 + dy);
-    ctx.lineTo(10.7, 9.3 + dy);
-    ctx.stroke();
-    ctx.fillRect(9.9, 10 + dy, 2.5, 3.6);
-    const glass = ctx.createLinearGradient(0, 10.5 + dy, 0, 13.1 + dy);
-    glass.addColorStop(0, '#fff6c8');
-    glass.addColorStop(1, '#ffd35a');
-    ctx.fillStyle = glass;
-    ctx.fillRect(10.4, 10.5 + dy, 1.5, 2.6);
-    ctx.fillStyle = '#e8f4ff';
-    ctx.beginPath();
-    ctx.arc(7.9, 4.3 + dy, 0.55, 0, Math.PI * 2);
-    ctx.fill();
+    drawGirl(ctx, {
+      legs: [
+        [5.9, 0],
+        [7.4, 0],
+      ],
+      legEnd: 15.4,
+      dy,
+      wave: Math.sin(t * 2) * 0.7,
+    });
     ctx.restore();
   }
 }

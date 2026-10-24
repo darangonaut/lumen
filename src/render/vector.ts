@@ -1,6 +1,7 @@
 import { CanvasSource, Container, Graphics, Texture } from 'pixi.js';
 import { TILE, Tile, tileAt, type Level, type World } from '@/game/level';
 import type { Art } from './art';
+import { drawGirl, type GirlPose } from './girl';
 import { decorOf, noise as pixelNoise, type PlayerFrame } from './common';
 
 /**
@@ -55,80 +56,59 @@ function glowDot(ctx: Ctx, x: number, y: number, r: number, inner: string, outer
 // --- Postavička ---
 const LEGS: Record<PlayerFrame, [number, number][]> = {
   idle: [
-    [4.7, 0],
-    [7.3, 0],
+    [5.9, 0],
+    [7.4, 0],
   ],
   run0: [
-    [4.6, -1.7],
-    [7.4, 1.8],
+    [5.8, -1.6],
+    [7.5, 1.7],
   ],
   run1: [
-    [5.6, -0.3],
-    [6.6, 0.4],
+    [6.4, -0.3],
+    [7, 0.4],
   ],
   run2: [
-    [4.8, -1],
-    [7.2, 1.2],
+    [5.9, -1],
+    [7.3, 1.1],
   ],
   run3: [
-    [5.8, 0.3],
-    [6.4, -0.4],
+    [6.5, 0.3],
+    [6.9, -0.4],
   ],
   jump: [
-    [4.9, 0.9],
-    [7.3, 1.3],
+    [6, 0.8],
+    [7.4, 1.2],
   ],
   fall: [
-    [4.2, -1.9],
-    [7.8, 1.9],
+    [5.6, -1.8],
+    [7.8, 1.8],
   ],
 };
 
+/** Ako veje cop pri jednotlivých pohyboch. */
+const HAIR: Record<PlayerFrame, number> = {
+  idle: 0,
+  run0: 0.8,
+  run1: 0.6,
+  run2: 0.9,
+  run3: 0.6,
+  jump: -0.6,
+  fall: 1,
+};
+
 function player(frame: PlayerFrame | 'breathe'): Texture {
-  const breathe = frame === 'breathe';
-  const legs = LEGS[breathe ? 'idle' : frame]!;
-  const dy = breathe ? 0.45 : 0;
-  return paint(14, 17, (ctx) => {
-    ctx.fillStyle = INK_CSS;
-    ctx.strokeStyle = INK_CSS;
-    // Nohy.
-    const legEnd = frame === 'jump' ? 14.6 : 15.4;
-    for (const [x, lean] of legs) line(ctx, x, 12.6, x + lean, legEnd, 1.35);
-    // Plášť (mierne rozšírený, s rozstrapkaným lemom).
-    ctx.beginPath();
-    ctx.moveTo(3.8, 6.6 + dy);
-    ctx.lineTo(8.6, 6.6 + dy);
-    ctx.lineTo(9.7, 13.1);
-    ctx.lineTo(8.7, 12.6);
-    ctx.lineTo(7.6, 13.3);
-    ctx.lineTo(6.2, 12.7);
-    ctx.lineTo(4.9, 13.3);
-    ctx.lineTo(3.7, 12.7);
-    ctx.lineTo(2.5, 13.2);
-    ctx.closePath();
-    ctx.fill();
-    // Hlava a kapucňa s cípom vzadu.
-    circle(ctx, 6.5, 4.5 + dy, 3.1);
-    ctx.beginPath();
-    ctx.moveTo(4.2, 2.4 + dy);
-    ctx.quadraticCurveTo(1.6, 4.2 + dy, 1.4, 8.2 + dy);
-    ctx.lineTo(4.6, 6.6 + dy);
-    ctx.closePath();
-    ctx.fill();
-    // Ruka s lampášom.
-    line(ctx, 8.1, 8.4 + dy, 10.7, 9.3 + dy, 1.3);
-    line(ctx, 10.9, 9.2 + dy, 11.1, 10.1 + dy, 0.6);
-    ctx.fillRect(9.9, 10 + dy, 2.5, 3.6);
-    ctx.fillRect(10.2, 9.6 + dy, 1.9, 0.6);
-    const g = ctx.createLinearGradient(0, 10.5 + dy, 0, 13.2 + dy);
-    g.addColorStop(0, GLOW);
-    g.addColorStop(1, GOLD);
-    ctx.fillStyle = g;
-    ctx.fillRect(10.4, 10.5 + dy, 1.5, 2.6);
-    // Oko.
-    ctx.fillStyle = '#e8f4ff';
-    circle(ctx, 7.9, 4.3 + dy, 0.55);
-  });
+  const pose = breathePose(frame);
+  return paint(14, 17, (ctx) => drawGirl(ctx, pose));
+}
+
+function breathePose(frame: PlayerFrame | 'breathe'): GirlPose {
+  const f = frame === 'breathe' ? 'idle' : frame;
+  return {
+    legs: LEGS[f]!,
+    legEnd: f === 'jump' ? 14.6 : 15.4,
+    dy: frame === 'breathe' ? 0.4 : 0,
+    wave: HAIR[f]!,
+  };
 }
 
 // --- Tiene a mory ---
