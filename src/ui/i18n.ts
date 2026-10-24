@@ -63,9 +63,6 @@ const sk = {
   soundOff: 'Zvuk: vypnutý',
   pausedHint: 'Esc / P pokračuje',
   rotate: 'Otoč telefón na šírku',
-  styleToggle: 'Grafika: {style}',
-  stylePixel: 'pixel art',
-  styleVector: 'siluety',
 };
 
 export type Key = keyof typeof sk;
@@ -135,9 +132,6 @@ const en: Record<Key, string> = {
   soundOff: 'Sound: off',
   pausedHint: 'Esc / P resumes',
   rotate: 'Turn your phone sideways',
-  styleToggle: 'Graphics: {style}',
-  stylePixel: 'pixel art',
-  styleVector: 'silhouettes',
 };
 
 const STRINGS: Record<Language, Record<Key, string>> = { sk, en };

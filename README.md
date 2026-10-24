@@ -1,6 +1,6 @@
 # Lumen
 
-Pixel art plošinovka do prehliadača o malej postavičke s lampášom vo svete, ktorý zhasol.
+Siluetová plošinovka do prehliadača o malej postavičke s lampášom vo svete, ktorý zhasol.
 Svetlo je všetko: ukazuje cestu, odháňa tiene a zhmotňuje svetelné plošiny. Olej v lampáši
 však pomaly dochádza.
 
@@ -11,8 +11,8 @@ však pomaly dochádza.
 |                                                 |                                                               |
 | ----------------------------------------------- | ------------------------------------------------------------- |
 | ![Svetelný most](docs/screenshots/bridge.png)   | ![Rozžiarený lampáš spaľuje tieň](docs/screenshots/flare.png) |
-| ![Zatopené jaskyne](docs/screenshots/caves.png) | ![Siluetový štýl](docs/screenshots/silhouettes.png)           |
-| ![Úvodná obrazovka](docs/screenshots/title.png) | ![Mobil](docs/screenshots/mobile.png)                         |
+| ![Zatopené jaskyne](docs/screenshots/caves.png) | ![Úvodná obrazovka](docs/screenshots/title.png)               |
+| ![Mobil](docs/screenshots/mobile.png)           |                                                               |
 
 ## Ako sa hrá
 
@@ -40,8 +40,7 @@ však pomaly dochádza.
 
 ## Vývoj
 
-TypeScript, Vite a PixiJS 8. Grafika má dva štýly prepínateľné v menu: pixel art
-(`src/render/sprites.ts`) a vektorové siluety (`src/render/vector.ts`). Všetka grafika aj zvuk sa generujú v kóde (žiadne obrázky ani
+TypeScript, Vite a PixiJS 8. Grafika je vektorová v siluetovom štýle (`src/render/vector.ts`): čierne popredie, žiariace pozadie, farbu má len svetlo. Všetka grafika aj zvuk sa generujú v kóde (žiadne obrázky ani
 zvukové súbory). Herná logika v `src/game/` je čistý TypeScript bez PixiJS a DOM. Levely sú
 ASCII mapy v `src/game/levels.ts` (2 svety po 4 leveloch: Hmlistý les a Zatopené jaskyne) a testy overujú, že sa dajú prejsť.
 

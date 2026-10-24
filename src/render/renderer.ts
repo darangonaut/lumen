@@ -18,9 +18,8 @@ import {
   type LightSource,
 } from '@/game/game';
 import { TILE, Tile, tileAt } from '@/game/level';
-import { pixelArt, pixelTexture, type Art, type ArtStyle } from './art';
-import { C, PLAYER_FRAMES, decorOf, dot, lightCanvas, type PlayerFrame } from './sprites';
-import { vectorArt } from './vector';
+import { C, PLAYER_FRAMES, decorOf, lightCanvas, type PlayerFrame } from './common';
+import { vectorArt as art } from './vector';
 
 interface Particle {
   sprite: Sprite;
@@ -95,8 +94,7 @@ export class Renderer {
     forest: { sky: Texture.EMPTY, far: Texture.EMPTY, near: Texture.EMPTY },
     caves: { sky: Texture.EMPTY, far: Texture.EMPTY, near: Texture.EMPTY },
   };
-  private darkness = 0.92;
-  private art: Art = pixelArt;
+  private darkness = 0.6;
   private mothSprites: Sprite[] = [];
   private sparkSprites: Sprite[] = [];
   private crumbleSprites: { sprite: Sprite; col: number; row: number }[] = [];
@@ -109,11 +107,10 @@ export class Renderer {
   private flames: Sprite[] = [];
   private mushrooms: { x: number; y: number }[] = [];
 
-  async init(host: HTMLElement, style: ArtStyle): Promise<void> {
+  async init(host: HTMLElement): Promise<void> {
     await this.app.init({
       resizeTo: host,
       background: C.ink,
-      // Vyhladzovanie potrebujú vektory; pixel art má textúry bez filtrovania, nevadí mu.
       antialias: true,
       roundPixels: true,
       autoDensity: true,
@@ -124,11 +121,10 @@ export class Renderer {
     const light = Texture.from(lightCanvas(128));
     light.source.scaleMode = 'linear';
     this.tex.light = light;
-    this.tex.spark = pixelTexture(dot(C.flameHot));
-    this.tex.wisp = pixelTexture(dot(C.shadeInner, 2, 2));
-    this.tex.dust = pixelTexture(dot(0x6a6080));
-    this.tex.stone = pixelTexture(dot(0x5a5a74, 2, 2));
-    this.art = style === 'vector' ? vectorArt : pixelArt;
+    this.tex.spark = art.dot('#fff6c8', 1.4);
+    this.tex.wisp = art.dot('#0d0f18', 2.4);
+    this.tex.dust = art.dot('#3a4458', 1.4);
+    this.tex.stone = art.dot('#0d0f18', 2);
     this.buildTextures();
 
     // Pozadie: nebo, mesiac, kopce a stromy s paralaxou.
@@ -148,21 +144,7 @@ export class Renderer {
     this.app.renderer.on('resize', () => this.resize());
   }
 
-  get style(): ArtStyle {
-    return this.art.style;
-  }
-
-  /** Prepne štýl grafiky; rozohraný level sa len prekreslí (stav hry ostáva). */
-  setStyle(style: ArtStyle): void {
-    if (style === this.art.style) return;
-    this.art = style === 'vector' ? vectorArt : pixelArt;
-    this.buildTextures();
-    this.moon.texture = this.tex.moon;
-    if (this.game) this.setGame(this.game);
-  }
-
   private buildTextures(): void {
-    const art = this.art;
     for (const frame of PLAYER_FRAMES) this.tex.player.set(frame, art.player(frame));
     this.tex.player.set('breathe', art.player('breathe'));
     this.tex.shade = [0, 1, 2].map((f) => art.shade(f, false));
@@ -182,9 +164,9 @@ export class Renderer {
       this.backs[world] = { sky: art.sky(world), far: art.far(world), near: art.near(world) };
   }
 
-  /** Zaokrúhlenie polohy: pixel art na celé pixely, vektory plynulo. */
+  /** Polohy sú plynulé (vektory netreba prichytávať na pixely). */
   private px(v: number): number {
-    return this.art.snap ? Math.round(v) : v;
+    return v;
   }
 
   /** Postaví scénu pre nový level. */
@@ -210,9 +192,9 @@ export class Renderer {
     this.hills.texture = back.far;
     this.trees.texture = back.near;
     this.moon.visible = level.world === 'forest';
-    this.darkness = this.art.darkness(level.world);
+    this.darkness = art.darkness(level.world);
 
-    this.level.addChild(this.art.terrain(level));
+    this.level.addChild(art.terrain(level));
     this.waterSprites = [];
     for (let row = 0; row < level.height; row++) {
       for (let col = 0; col < level.width; col++) {
@@ -241,7 +223,7 @@ export class Renderer {
         this.lightTiles.push({ sprite, col, row });
       }
     }
-    const signTex = this.art.sign();
+    const signTex = art.sign();
     for (const s of level.signs) {
       const sprite = new Sprite(signTex);
       sprite.anchor.set(0.5, 1);
@@ -254,7 +236,7 @@ export class Renderer {
       let row = Math.floor(l.y / TILE) + 1;
       while (row < level.height && tileAt(level, col, row) !== Tile.Ground) row++;
       const top = l.y + 4;
-      const post = new Sprite(this.art.post(row * TILE - top));
+      const post = new Sprite(art.post(row * TILE - top));
       post.position.set(l.x - 2, top);
       const lantern = new Sprite(this.tex.lantern[0]);
       lantern.anchor.set(0.5, 0.5);
@@ -262,7 +244,7 @@ export class Renderer {
       this.level.addChild(post, lantern);
       return lantern;
     });
-    const fire = new Sprite(this.art.campfire());
+    const fire = new Sprite(art.campfire());
     fire.anchor.set(0.5, 1);
     fire.position.set(level.exit.x + 3, level.exit.y + TILE / 2);
     this.level.addChild(fire);

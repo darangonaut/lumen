@@ -1,8 +1,7 @@
 import { CanvasSource, Container, Graphics, Texture } from 'pixi.js';
 import { TILE, Tile, tileAt, type Level, type World } from '@/game/level';
 import type { Art } from './art';
-import { pixelNoise } from './PixelCanvas';
-import { decorOf, type PlayerFrame } from './sprites';
+import { decorOf, noise as pixelNoise, type PlayerFrame } from './common';
 
 /**
  * Siluetový štýl (v duchu hier Limbo a Badland): popredie je čierne, pozadie farebne žiari
@@ -443,6 +442,14 @@ function sky(world: World): Texture {
   );
 }
 
+/**
+ * Spodný okraj vrstvy nechá priehľadný: textúra sa opakuje aj zvisle a vyhladzovanie by inak
+ * prenieslo plný spodok na horný okraj (tenká čiara cez oblohu). Spodok je mimo obrazovky.
+ */
+function seamless(ctx: Ctx, w: number, h: number): void {
+  ctx.clearRect(0, h - 1.5, w, 1.5);
+}
+
 /** Opakovateľný obrys: tvar sa nakreslí aj posunutý o šírku, aby sa okraje napojili. */
 function wrapped(width: number, draw: (offset: number) => void): void {
   for (const offset of [-width, 0, width]) draw(offset);
@@ -476,6 +483,7 @@ function far(world: World): Texture {
       fog.addColorStop(1, world === 'caves' ? 'rgba(40,110,130,0.45)' : 'rgba(110,150,170,0.45)');
       ctx.fillStyle = fog;
       ctx.fillRect(0, 0, W, H);
+      seamless(ctx, W, H);
     },
     3,
   );
@@ -532,6 +540,7 @@ function near(world: World): Texture {
         }
       }
       ctx.fillRect(0, H * 0.9, W, H * 0.1);
+      seamless(ctx, W, H);
     },
     3,
   );
@@ -542,7 +551,6 @@ function terrain(level: Level): Container {
   const g = new Graphics();
   const caves = level.world === 'caves';
   const ground = (c: number, r: number) => tileAt(level, c, r) === Tile.Ground;
-  const noise = (a: number, b: number, s: number) => pixelNoise(a, b, s);
 
   // Zem po vodorovných úsekoch (s presahom, aby medzi políčkami neboli švy).
   for (let row = 0; row < level.height; row++) {
@@ -568,21 +576,21 @@ function terrain(level: Level): Container {
         if (!ground(col, row - 1) && row > 0) {
           // Nerovný vrch: hrbolčeky a steblá trávy (v jaskyni mach).
           for (let i = 0; i < 3; i++) {
-            const bx = x0 + 2 + noise(col * 3 + i, row, 301) * 12;
+            const bx = x0 + 2 + pixelNoise(col * 3 + i, row, 301) * 12;
             g.ellipse(
               bx,
               y0,
-              2 + noise(col, row * 3 + i, 302) * 3,
-              0.8 + noise(col, i, 303) * 1.2,
+              2 + pixelNoise(col, row * 3 + i, 302) * 3,
+              0.8 + pixelNoise(col, i, 303) * 1.2,
             ).fill(INK);
           }
           const blades = caves ? 2 : 6;
           for (let i = 0; i < blades; i++) {
-            const bx = x0 + noise(col * 7 + i, row, 304) * TILE;
+            const bx = x0 + pixelNoise(col * 7 + i, row, 304) * TILE;
             const h = caves
-              ? 1 + noise(col, row * 7 + i, 305) * 1.5
-              : 1.5 + noise(col, row * 7 + i, 305) * 3.5;
-            const lean = (noise(col + i, row, 306) - 0.5) * 2;
+              ? 1 + pixelNoise(col, row * 7 + i, 305) * 1.5
+              : 1.5 + pixelNoise(col, row * 7 + i, 305) * 3.5;
+            const lean = (pixelNoise(col + i, row, 306) - 0.5) * 2;
             g.poly([bx - 0.7, y0 + 0.5, bx + 0.7, y0 + 0.5, bx + lean, y0 - h]).fill(INK);
           }
         }
@@ -593,17 +601,17 @@ function terrain(level: Level): Container {
         ) {
           if (caves) {
             // Krápniky.
-            if (noise(col, row, 307) < 0.6) {
-              const cx = x0 + 3 + noise(col, row, 308) * 10;
-              const len = 4 + noise(col, row, 309) * 10;
-              const w = 1.5 + noise(col, row, 310) * 1.5;
+            if (pixelNoise(col, row, 307) < 0.6) {
+              const cx = x0 + 3 + pixelNoise(col, row, 308) * 10;
+              const len = 4 + pixelNoise(col, row, 309) * 10;
+              const w = 1.5 + pixelNoise(col, row, 310) * 1.5;
               g.poly([cx - w, y0 + TILE, cx + w, y0 + TILE, cx, y0 + TILE + len]).fill(INK);
             }
           } else {
             // Korienky.
             for (let i = 0; i < 2; i++) {
-              const rx = x0 + 3 + noise(col * 2 + i, row, 311) * 10;
-              const len = 2 + noise(col, row * 2 + i, 312) * 5;
+              const rx = x0 + 3 + pixelNoise(col * 2 + i, row, 311) * 10;
+              const len = 2 + pixelNoise(col, row * 2 + i, 312) * 5;
               g.moveTo(rx, y0 + TILE)
                 .quadraticCurveTo(rx + 1.5, y0 + TILE + len * 0.6, rx - 0.5, y0 + TILE + len)
                 .stroke({ width: 0.7, color: INK });
@@ -611,12 +619,15 @@ function terrain(level: Level): Container {
           }
         }
         for (const side of [-1, 1]) {
-          if (ground(col + side, row) || noise(col, row + side, 313) > 0.4) continue;
+          if (ground(col + side, row) || pixelNoise(col, row + side, 313) > 0.4) continue;
           // Výčnelok na boku.
           const sx = side < 0 ? x0 : x0 + TILE;
-          g.ellipse(sx, y0 + 4 + noise(col, row, 314) * 8, 1.2, 2 + noise(row, col, 315) * 2).fill(
-            INK,
-          );
+          g.ellipse(
+            sx,
+            y0 + 4 + pixelNoise(col, row, 314) * 8,
+            1.2,
+            2 + pixelNoise(row, col, 315) * 2,
+          ).fill(INK);
         }
       } else if (tile === Tile.Ledge) {
         g.roundRect(x0 - 0.2, y0, TILE + 0.4, 3, 0.8).fill(INK);
@@ -627,7 +638,7 @@ function terrain(level: Level): Container {
         const points: number[] = [x0, y0 + TILE];
         for (let i = 0; i <= 6; i++) {
           const x = x0 + (i / 6) * TILE;
-          const peak = 6 + noise(col * 7 + i, row, 316) * 4;
+          const peak = 6 + pixelNoise(col * 7 + i, row, 316) * 4;
           points.push(x - 1.3, y0 + TILE - 3, x, y0 + TILE - peak, x + 1.3, y0 + TILE - 3);
         }
         points.push(x0 + TILE, y0 + TILE);
@@ -653,9 +664,20 @@ function terrain(level: Level): Container {
   return c;
 }
 
+function dot(color: string, size: number): Texture {
+  return paint(
+    size,
+    size,
+    (ctx) => {
+      ctx.fillStyle = color;
+      circle(ctx, size / 2, size / 2, size / 2);
+    },
+    8,
+  );
+}
+
 export const vectorArt: Art = {
-  style: 'vector',
-  snap: false,
+  dot,
   darkness: (world) => (world === 'caves' ? 0.7 : 0.6),
   terrain,
   player,
