@@ -20,6 +20,9 @@ však pomaly dochádza.
 - **Rozžiarenie** (Shift / X / ✦) zväčší svetlo, ukáže vzdialené plošiny a spáli tiene,
   ale míňa veľa oleja.
 - **Tiene** krúžia na okraji svetla a čakajú, kým zaváhaš. Ich dotyk ukradne olej.
+  Poraziť ich môžeš **skokom na hlavu**, **iskrou** (stojí trochu oleja) alebo rozžiarením.
+- **Mory** letia za svetlom a pijú olej z lampáša.
+- V **Zatopených jaskyniach** číha ľadová voda a popraskané kamene, ktoré sa pod tebou rozpadnú.
 - **Lampy** na stĺpoch sú checkpointy a doplnia olej. Pri nich si v bezpečí.
 - Na konci každého levelu zapáľ **vatru**. Kto hľadá, nájde aj skryté **kryštály**.
 
@@ -30,6 +33,7 @@ však pomaly dochádza.
 | Chôdza                  | ← → / A D         | ◀ ▶   |
 | Skok (podržaním vyššie) | Medzerník / ↑ / W | ⤒     |
 | Zoskočiť z lávky        | ↓ / S             |       |
+| Hodiť iskru             | C / F             | ✸     |
 | Rozžiariť lampáš        | Shift / X         | ✦     |
 | Pauza                   | Esc / P           | ❚❚    |
 
@@ -37,7 +41,7 @@ však pomaly dochádza.
 
 TypeScript, Vite a PixiJS 8. Všetka grafika aj zvuk sa generujú v kóde (žiadne obrázky ani
 zvukové súbory). Herná logika v `src/game/` je čistý TypeScript bez PixiJS a DOM. Levely sú
-ASCII mapy v `src/game/levels.ts` a testy overujú, že sa dajú prejsť.
+ASCII mapy v `src/game/levels.ts` (2 svety po 4 leveloch: Hmlistý les a Zatopené jaskyne) a testy overujú, že sa dajú prejsť.
 
 ```bash
 npm install
