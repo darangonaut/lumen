@@ -1,4 +1,4 @@
-import { Game, MOVER_W, NO_INPUT, PLAYER_H, PLAYER_W, type Input } from '@/game/game';
+import { Game, MOVER_W, NO_INPUT, PLAYER_H, PLAYER_W, calmLeft, type Input } from '@/game/game';
 import { TILE, Tile, isGround, tileAt } from '@/game/level';
 
 /**
@@ -6,7 +6,7 @@ import { TILE, Tile, isGround, tileAt } from '@/game/level';
  * plošiny počká a nechá sa odviezť. Overuje len geometriu (olej dopĺňa, tiene a mory
  * vypína). Vráti, či došiel k vatre, najďalší stĺpec a počet pádov.
  */
-export function botRun(game: Game, seconds = 240): { done: boolean; col: number; deaths: number } {
+export function botRun(game: Game, seconds = 600): { done: boolean; col: number; deaths: number } {
   const dt = 1 / 60;
   let hold = 0;
   let best = 0;
@@ -46,6 +46,16 @@ export function botRun(game: Game, seconds = 240): { done: boolean; col: number;
       continue;
     }
 
+    // Búrka: na pevnej zemi počká, kým vietor utíchne a do ďalšieho nárazu je dosť času.
+    if (level.world === 'storm' && p.onGround && game.onMover < 0) {
+      const under = tileAt(level, Math.floor((p.x + PLAYER_W / 2) / TILE), feet);
+      if (under !== Tile.Crumble && under !== Tile.Ice && (game.wind !== 0 || calmLeft(game.time) < 1.6)) {
+        hold = 0;
+        step({});
+        continue;
+      }
+    }
+
     // Na pohyblivej plošine: čaká, kým je pred ním pevná zem na dosah, potom zíde/skočí.
     if (game.onMover >= 0) {
       let target: { c: number; r: number } | null = null;
@@ -62,7 +72,10 @@ export function botRun(game: Game, seconds = 240): { done: boolean; col: number;
       );
       const atEdge = p.x + PLAYER_W >= cur.x + MOVER_W - 4;
       const reach = next && next.x <= p.x + PLAYER_W + 36 && Math.abs(next.y - feetY) <= 8;
-      if (target) step({ right: true, jump: target.r < feet });
+      // V búrke zo plošiny neskáče, kým fúka.
+      const windy = level.world === 'storm' && (game.wind !== 0 || calmLeft(game.time) < 1);
+      if (windy) step({});
+      else if (target) step({ right: true, jump: target.r < feet });
       else if (next && reach && atEdge) step({ right: true, jump: true });
       else if (next && !atEdge) step({ right: true });
       else step({});

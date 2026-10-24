@@ -70,6 +70,45 @@ export const MOVER_W = 32;
 export const MOVER_H = 5;
 const MOVER_RANGE = 64;
 const MOVER_TRIP = 2.2;
+/**
+ * Vietor (Búrlivý vrch): bezvetrie → zosilnenie → náraz → slabnutie, stále dokola.
+ * Vo vzduchu hráča odfukuje, pri chôdzi ho brzdí alebo poháňa; kto stojí, toho neodfúkne.
+ */
+const WIND_CALM = 3.2;
+const WIND_RISE = 0.9;
+const WIND_GUST = 2.3;
+const WIND_FALL = 0.8;
+export const WIND_CYCLE = WIND_CALM + WIND_RISE + WIND_GUST + WIND_FALL;
+const WIND_AIR = 62;
+const WIND_GROUND = 45;
+/** Smer nárazov: väčšinou proti hráčovi, každý tretí do chrbta. */
+const WIND_PATTERN = [-1, -1, 1] as const;
+
+/** Sila a smer vetra v čase t (−1 až 1); kladný fúka doprava. */
+export function windAt(t: number): number {
+  const n = Math.floor(t / WIND_CYCLE);
+  const dir = WIND_PATTERN[n % WIND_PATTERN.length]!;
+  let u = t - n * WIND_CYCLE - WIND_CALM;
+  if (u < 0) return 0;
+  if (u < WIND_RISE) return dir * smooth(u / WIND_RISE);
+  u -= WIND_RISE;
+  if (u < WIND_GUST) return dir;
+  u -= WIND_GUST;
+  return dir * (1 - smooth(Math.min(1, u / WIND_FALL)));
+}
+
+/** Koľko sekúnd zostáva do ďalšieho nárazu (0, keď už fúka). */
+export function calmLeft(t: number): number {
+  const u = t - Math.floor(t / WIND_CYCLE) * WIND_CYCLE;
+  if (u < WIND_CALM) return WIND_CALM - u;
+  if (u < WIND_CALM + WIND_RISE + WIND_GUST + WIND_FALL * 0.5) return 0;
+  return WIND_CYCLE - u + WIND_CALM;
+}
+
+function smooth(x: number): number {
+  return x * x * (3 - 2 * x);
+}
+
 /** Koľko zásahov vydrží veľký tieň. */
 export const BIG_SHADE_HITS = 3;
 const CRUMBLE_RESPAWN = 3;
@@ -96,6 +135,8 @@ export type GameEvent =
   | { type: 'shatter'; x: number; y: number }
   | { type: 'shadeHit'; x: number; y: number }
   | { type: 'lunge' }
+  | { type: 'gust'; dir: number }
+  | { type: 'lightning' }
   | { type: 'died'; cause: DeathCause }
   | { type: 'respawn' }
   | { type: 'exit' };
@@ -236,10 +277,20 @@ export class Game {
   private flareHeld = false;
   private deadTimer = 0;
   private rng: Rng;
+  /** Blesky majú vlastný generátor, aby nemenili správanie tieňov. */
+  private skyRng: Rng;
+  private nextFlash = 3;
+  private strikeAge = 99;
+  /** Aktuálny vietor (−1 až 1) a či je hráč v závetrí. */
+  wind = 0;
+  sheltered = false;
+  /** Záblesk blesku (1 = práve udrel, klesá k 0). */
+  flash = 0;
   private events: GameEvent[] = [];
 
   constructor(readonly level: Level) {
     this.rng = new Rng(hash(level.id));
+    this.skyRng = new Rng(hash(level.id) ^ 0x5bd1e995);
     this.checkpoint = { ...level.start };
     this.player = {
       x: 0,
@@ -372,6 +423,7 @@ export class Game {
       this.updateIcicles(dt);
       return this.events;
     }
+    this.updateWeather(dt);
     this.updateLight(dt, input);
     this.updateCrumbles(dt);
     this.updateMovers();
@@ -383,6 +435,40 @@ export class Game {
     if (this.state === 'play') this.updateMoths(dt);
     if (this.state === 'play') this.collect();
     return this.events;
+  }
+
+  /** Vietor a blesky; len na Búrlivom vrchu. */
+  private updateWeather(dt: number): void {
+    if (this.level.world !== 'storm') return;
+    const before = this.wind;
+    this.wind = windAt(this.time);
+    if (before === 0 && this.wind !== 0)
+      this.events.push({ type: 'gust', dir: Math.sign(this.wind) });
+    // Blesk: dve bliknutia a pomalé doznievanie.
+    this.strikeAge += dt;
+    const a = this.strikeAge;
+    this.flash =
+      a < 0.07 ? 1 : a < 0.15 ? 0.25 : a < 0.24 ? 0.85 : Math.max(0, 0.85 - (a - 0.24) * 1.6);
+    if (this.time >= this.nextFlash) {
+      this.strikeAge = 0;
+      this.flash = 1;
+      this.nextFlash = this.time + 4 + this.skyRng.next() * 7;
+      this.events.push({ type: 'lightning' });
+    }
+  }
+
+  /** Je hráč v závetrí? Stačí skala do dvoch políčok na strane, odkiaľ fúka. */
+  private inShelter(dir: number): boolean {
+    const p = this.player;
+    const top = Math.floor(p.y / TILE);
+    const bottom = Math.floor((p.y + PLAYER_H - 1) / TILE);
+    for (const d of [4, 20]) {
+      const x = dir > 0 ? p.x - d : p.x + PLAYER_W + d;
+      const col = Math.floor(x / TILE);
+      for (let row = top; row <= bottom; row++)
+        if (isGround(tileAt(this.level, col, row))) return true;
+    }
+    return false;
   }
 
   private updateLight(dt: number, input: Input): void {
@@ -433,13 +519,20 @@ export class Game {
     const apex = !p.onGround && this.jumpHeld && Math.abs(p.vy) < APEX_SPEED;
     p.vy = Math.min(MAX_FALL, p.vy + GRAVITY * (apex ? APEX_GRAVITY : 1) * dt);
     const lights = this.lights();
+    // Vietor: vo vzduchu odfukuje, pri chôdzi brzdí alebo poháňa; stojaceho neodfúkne.
+    this.sheltered = this.wind !== 0 && this.inShelter(Math.sign(this.wind));
+    let drift = 0;
+    if (this.wind !== 0 && !this.sheltered) {
+      if (!p.onGround) drift = this.wind * WIND_AIR;
+      else if (move !== 0) drift = this.wind * WIND_GROUND;
+    }
     // Plošina, na ktorej hráč stojí, ho vezie so sebou.
     const carrier = this.movers[this.onMover];
     if (carrier) {
       this.moveX(carrier.dx, lights);
       p.y += carrier.dy;
     }
-    this.moveX(p.vx * dt, lights);
+    this.moveX((p.vx + drift) * dt, lights);
     const wasOnGround = p.onGround;
     this.moveY(p.vy * dt, lights, input.down);
     this.landOnMovers();

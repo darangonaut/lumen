@@ -25,16 +25,17 @@ však pomaly dochádza.
   Poraziť ich môžeš **skokom na hlavu**, **iskrou** (stojí trochu oleja) alebo rozžiarením.
 - **Mory** letia za svetlom a pijú olej z lampáša.
 
-**24 levelov v šiestich svetoch**, každý s vlastnou mechanikou:
+**24 levelov v šiestich svetoch**, každý s vlastnou mechanikou, a po dohraní **bonusový siedmy svet**:
 
-| Svet             | Čo ťa čaká                                      |
-| ---------------- | ----------------------------------------------- |
-| Hmlistý les      | svetelné plošiny, prvé tiene                    |
-| Zatopené jaskyne | ľadová voda, popraskané kamene, mory            |
-| Močiare          | svietiace huby, ktoré ťa vymrštia do výšky      |
-| Ľadové štíty     | šmykľavý ľad a cencúle, ktoré sa odlomia        |
-| Zabudnutá veža   | pohyblivé plošiny                               |
-| Srdce tmy        | veľké tiene, ktoré vydržia tri zásahy, a finále |
+| Svet                 | Čo ťa čaká                                      |
+| -------------------- | ----------------------------------------------- |
+| Hmlistý les          | svetelné plošiny, prvé tiene                    |
+| Zatopené jaskyne     | ľadová voda, popraskané kamene, mory            |
+| Močiare              | svietiace huby, ktoré ťa vymrštia do výšky      |
+| Ľadové štíty         | šmykľavý ľad a cencúle, ktoré sa odlomia        |
+| Zabudnutá veža       | pohyblivé plošiny                               |
+| Srdce tmy            | veľké tiene, ktoré vydržia tri zásahy, a finále |
+| Búrlivý vrch (bonus) | vietor v nárazoch, závetrie za skalami, blesky  |
 
 - **Lampy** na stĺpoch sú checkpointy a doplnia olej. Pri nich si v bezpečí.
 - Na konci každého levelu zapáľ **vatru**. Kto hľadá, nájde aj skryté **kryštály**.

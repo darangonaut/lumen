@@ -32,6 +32,8 @@ interface Particle {
   fade: boolean;
   /** Počiatočná priehľadnosť (blednutím klesá k nule). */
   alpha: number;
+  /** Dážď a prúdy vetra: bez odporu vzduchu, natočené v smere letu. */
+  streak?: boolean;
 }
 
 const WARM = 0xffa848;
@@ -45,6 +47,8 @@ export class Renderer {
   private world = new Container();
   private sky!: TilingSprite;
   private moon!: Sprite;
+  /** Záblesk blesku na oblohe (kopce a stromy pred ním ostanú siluetou). */
+  private skyFlash = new Graphics();
   private hills!: TilingSprite;
   private trees!: TilingSprite;
   private level = new Container();
@@ -87,6 +91,7 @@ export class Renderer {
     dust: Texture.EMPTY,
     stone: Texture.EMPTY,
     snow: Texture.EMPTY,
+    rain: Texture.EMPTY,
     moth: [] as Texture[],
     sparkBall: Texture.EMPTY,
     water: [] as Texture[],
@@ -134,6 +139,7 @@ export class Renderer {
     this.tex.dust = art.dot('#3a4458', 1.4);
     this.tex.stone = art.dot('#0d0f18', 2);
     this.tex.snow = art.dot('#ffffff', 1.6);
+    this.tex.rain = art.dot('#b8c8e8', 1.2);
     this.buildTextures();
 
     // Pozadie: nebo, mesiac, kopce a stromy s paralaxou.
@@ -142,7 +148,7 @@ export class Renderer {
     this.moon = new Sprite(this.tex.moon);
     this.hills = new TilingSprite({ texture: forest.far, width: 480, height: 110 });
     this.trees = new TilingSprite({ texture: forest.near, width: 400, height: 130 });
-    this.bg.addChild(this.sky, this.moon, this.hills, this.trees);
+    this.bg.addChild(this.sky, this.skyFlash, this.moon, this.hills, this.trees);
 
     this.lightLayer.blendMode = 'erase';
     this.lightRoot.addChild(this.lightLayer);
@@ -585,6 +591,10 @@ export class Renderer {
     this.hills.y = this.viewH - 110 + lift * 0.6;
     this.trees.tilePosition.x = -this.cam.x * 0.3;
     this.trees.y = this.viewH - 118 + lift;
+    this.skyFlash
+      .clear()
+      .rect(0, 0, this.viewW, this.viewH)
+      .fill({ color: 0xc8d4ff, alpha: game.flash * 0.5 });
   }
 
   private updateActors(dt: number, lights: LightSource[]): void {
@@ -717,8 +727,11 @@ export class Renderer {
         return false;
       }
       p.vy += p.gravity * dt;
-      p.vx *= 1 - dt * 2;
-      p.vy *= 1 - dt * 1.5;
+      if (p.streak) p.sprite.rotation = -Math.atan2(p.vx, p.vy);
+      else {
+        p.vx *= 1 - dt * 2;
+        p.vy *= 1 - dt * 1.5;
+      }
       p.sprite.x += p.vx * dt;
       p.sprite.y += p.vy * dt;
       if (p.fade) p.sprite.alpha = p.alpha * (1 - p.age / p.life);
@@ -730,6 +743,10 @@ export class Renderer {
   /** Častice vo vzduchu podľa sveta: svetielka, bludičky, sneh, prach alebo žeravé iskry. */
   private spawnAmbient(dt: number): void {
     const kind = this.ambient;
+    if (kind === 'rain') {
+      this.spawnStorm(dt);
+      return;
+    }
     const rate = { motes: 3, wisps: 2.5, snow: 28, dust: 2.5, embers: 7 }[kind];
     let n = rate * dt;
     while (n > 0) {
@@ -777,6 +794,39 @@ export class Renderer {
     }
   }
 
+  /** Búrka: dážď šikmý podľa vetra a pri nárazoch prúdy vetra cez celú obrazovku. */
+  private spawnStorm(dt: number): void {
+    const wind = this.game.wind;
+    const left = this.cam.x - this.viewW / 2;
+    const top = this.cam.y - this.viewH / 2;
+    let n = 55 * dt;
+    while (n > 0 && Math.random() < n) {
+      n -= 1;
+      const vy = 230 + Math.random() * 40;
+      const vx = wind * 110 - 18;
+      const x = left - vx * 0.3 + Math.random() * (this.viewW + Math.abs(vx));
+      this.spawn(this.tex.rain, x, top - 6, vx, vy, 0, (this.viewH + 12) / vy, true);
+      const p = this.particles[this.particles.length - 1]!;
+      p.streak = true;
+      p.fade = false;
+      p.sprite.alpha = p.alpha = 0.3;
+      p.sprite.scale.set(0.6, 5);
+    }
+    let m = 16 * Math.abs(wind) * dt;
+    while (m > 0 && Math.random() < m) {
+      m -= 1;
+      const dir = Math.sign(wind);
+      const x = dir > 0 ? left - 20 : left + this.viewW + 20;
+      const y = top + Math.random() * this.viewH;
+      const vx = dir * (240 + Math.random() * 80);
+      this.spawn(this.tex.rain, x, y, vx, 0, 0, (this.viewW + 40) / Math.abs(vx), true);
+      const p = this.particles[this.particles.length - 1]!;
+      p.streak = true;
+      p.sprite.alpha = p.alpha = 0.18 * Math.abs(wind);
+      p.sprite.scale.set(0.5, 14 + Math.random() * 10);
+    }
+  }
+
   private updateDarkness(): void {
     const game = this.game;
     const vx = this.cam.x - this.viewW / 2;
@@ -787,7 +837,7 @@ export class Renderer {
     this.darkFill
       .clear()
       .rect(0, 0, this.viewW, this.viewH)
-      .fill({ color: 0x04030a, alpha: this.darkness });
+      .fill({ color: 0x04030a, alpha: this.darkness * (1 - game.flash * 0.75) });
     this.app.renderer.render({ container: this.darkFill, target: this.dark, clear: true });
 
     let used = 0;

@@ -10,7 +10,7 @@ import type { PlayerFrame } from './common';
 export interface WorldInfo {
   darkness: number;
   moon: boolean;
-  ambient: 'motes' | 'wisps' | 'snow' | 'dust' | 'embers';
+  ambient: 'motes' | 'wisps' | 'snow' | 'dust' | 'embers' | 'rain';
 }
 
 export interface Art {

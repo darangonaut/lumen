@@ -557,6 +557,20 @@ const WORLDS: Record<World, WorldStyle> = {
     under: 'stalactites',
     info: { darkness: 0.92, moon: false, ambient: 'embers' },
   },
+  storm: {
+    sky: ['#040509', '#10141f', '#222a3a', '#46506a'],
+    stars: 'rgba(200,210,235,0.25)',
+    far: '#141a28',
+    farShape: 'jagged',
+    fog: 'rgba(120,135,165,0.35)',
+    near: '#070a12',
+    nearShape: 'deadtrees',
+    water: 0x0c1622,
+    waterLine: '#a8c0e0',
+    top: 'grass',
+    under: 'roots',
+    info: { darkness: 0.9, moon: false, ambient: 'rain' },
+  },
 };
 
 // --- Pozadie ---

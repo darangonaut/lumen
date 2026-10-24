@@ -27,7 +27,7 @@ export enum Tile {
   Bounce,
 }
 
-export type World = 'forest' | 'caves' | 'swamp' | 'ice' | 'tower' | 'abyss';
+export type World = 'forest' | 'caves' | 'swamp' | 'ice' | 'tower' | 'abyss' | 'storm';
 
 /** Pevná zem (aj ľad a huba): na nej sa stojí a cez ňu sa neprejde. */
 export function isGround(tile: Tile): boolean {

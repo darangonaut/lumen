@@ -71,9 +71,13 @@ const WORLD_NAMES: Record<string, Key> = {
   ice: 'world4',
   tower: 'world5',
   abyss: 'world6',
+  storm: 'world7',
 };
 
 /** „Zatopené jaskyne 2/4“ — poradie levelu v rámci jeho sveta. */
+/** Počet levelov hlavného príbehu; za nimi nasleduje bonusový Búrlivý vrch. */
+const MAIN_LEVELS = LEVELS.findIndex((l) => l.world === 'storm');
+
 function levelLabel(index: number): string {
   const world = LEVELS[index]!.world;
   const inWorld = LEVELS.filter((l) => l.world === world);
@@ -125,9 +129,7 @@ function refreshTexts(): void {
   $('.done-title').textContent = t('levelDone');
   $('.next').textContent = t('next');
   $('.replay').textContent = t('replay');
-  $('.victory-title').textContent = t('victoryTitle');
-  $('.victory-story').textContent = t('victoryStory');
-  $('.coming-soon').textContent = t('comingSoon');
+  $('.bonus-play').textContent = t('bonusPlay');
   $('.victory-menu').textContent = t('toMenu');
   $('.rotate-text').textContent = t('rotate');
 }
@@ -190,6 +192,7 @@ async function startLevel(index: number): Promise<void> {
 
 function toMenu(): void {
   game = null;
+  sound.setWind(0);
   paused = false;
   hud.hidden = true;
   touch.hidden = true;
@@ -238,9 +241,11 @@ $('.sound-toggle').addEventListener('click', () => {
 });
 $('.pause-btn').addEventListener('click', () => setPaused(true));
 $('.next').addEventListener('click', () => {
-  if (levelIndex + 1 < LEVELS.length) void startLevel(levelIndex + 1);
-  else showVictory();
+  if (levelIndex === MAIN_LEVELS - 1) showVictory(false);
+  else if (levelIndex + 1 < LEVELS.length) void startLevel(levelIndex + 1);
+  else showVictory(true);
 });
+$('.bonus-play').addEventListener('click', () => void startLevel(MAIN_LEVELS));
 $('.replay').addEventListener('click', () => void startLevel(levelIndex));
 $('.victory-menu').addEventListener('click', () => toMenu());
 window.addEventListener('keydown', (e) => {
@@ -278,7 +283,8 @@ function finishLevel(g: Game): void {
   // Posledný level sveta (nie celej hry): ohlási ďalší svet.
   const doneWorld = $('.done-world');
   const next = LEVELS[levelIndex + 1];
-  doneWorld.hidden = !next || next.world === def.world;
+  // Bonusový svet ohlási až záverečná obrazovka.
+  doneWorld.hidden = !next || next.world === def.world || levelIndex === MAIN_LEVELS - 1;
   if (next)
     doneWorld.textContent = t('worldDone', {
       world: t(WORLD_NAMES[def.world]!),
@@ -289,13 +295,15 @@ function finishLevel(g: Game): void {
   show(done);
 }
 
-function showVictory(): void {
+/** Záver hry (po 24. leveli) alebo bonusového sveta (po poslednom). */
+function showVictory(bonus: boolean): void {
   const save = readSave();
   let f = 0;
   let ft = 0;
   let c = 0;
   let ct = 0;
-  for (const def of LEVELS) {
+  const counted = bonus ? LEVELS.slice(MAIN_LEVELS) : LEVELS.slice(0, MAIN_LEVELS);
+  for (const def of counted) {
     const level = parseLevel(def);
     ft += level.fireflies.length;
     ct += level.crystals.length;
@@ -303,6 +311,13 @@ function showVictory(): void {
     c += save.best[def.id]?.crystals ?? 0;
   }
   $('.victory-stats').textContent = t('victoryStats', { f, ft, c, ct, d: game?.deaths ?? 0 });
+  $('.victory-title').textContent = t(bonus ? 'bonusTitle' : 'victoryTitle');
+  $('.victory-story').textContent = t(bonus ? 'bonusStory' : 'victoryStory');
+  $('.coming-soon').textContent = bonus
+    ? t('comingSoon')
+    : t('bonusUnlocked', { world: t('world7') });
+  $<HTMLButtonElement>('.bonus-play').hidden = bonus;
+  sound.setWind(0);
   game = null;
   hud.hidden = true;
   document.body.classList.remove('playing');
@@ -382,6 +397,7 @@ function frame(now: number): void {
     renderer.render(dt);
     updateHud(game);
     sound.update(dt, game.oil <= 0 ? 1 : game.shades.some((s) => s.alive && s.active) ? 0.6 : 0);
+    sound.setWind(Math.abs(game.wind));
   }
 }
 requestAnimationFrame(frame);

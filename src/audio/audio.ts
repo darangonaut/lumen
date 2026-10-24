@@ -96,9 +96,22 @@ export class Sound {
     lfoGain.gain.value = 250;
     lfo.connect(lfoGain).connect(wind.frequency);
     noise.connect(wind).connect(windGain).connect(this.master!);
+    this.windFilter = wind;
+    this.windGain = windGain;
     noise.start();
     lfo.start();
     this.padNodes.push(noise, lfo);
+  }
+
+  private windFilter: BiquadFilterNode | null = null;
+  private windGain: GainNode | null = null;
+
+  /** Sila vetra v pozadí (0 = tichý vánok, 1 = víchrica). */
+  setWind(strength: number): void {
+    if (!this.ctx || !this.windGain || !this.windFilter) return;
+    const t = this.ctx.currentTime;
+    this.windGain.gain.setTargetAtTime(0.025 + strength * 0.13, t, 0.15);
+    this.windFilter.frequency.setTargetAtTime(500 + strength * 500, t, 0.2);
   }
 
   /** Hrací strojček: náhodné tóny pentatoniky (volať každý snímok). */
@@ -195,6 +208,13 @@ export class Sound {
           if (e.cause === 'water') this.noise(0.6, 900, 0.15, 'bandpass');
           this.sweep(440, 60, 'triangle', 0.14, 1);
           break;
+        case 'gust':
+          this.noise(1.2, 700, 0.08, 'bandpass');
+          break;
+        case 'lightning':
+          this.noise(0.25, 3000, 0.12, 'highpass');
+          this.thunder(0.35 + Math.random() * 0.6);
+          break;
         case 'respawn':
           this.tone(SCALE[0]!, 'sine', 0.08, 0.6);
           break;
@@ -267,6 +287,24 @@ export class Sound {
     const g = ctx.createGain();
     g.gain.setValueAtTime(volume, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + length);
+    src.connect(f).connect(g).connect(this.master!);
+    src.start(t);
+  }
+
+  /** Hrom: hlboké dunenie s oneskorením po blesku. */
+  private thunder(delay: number): void {
+    const ctx = this.ctx!;
+    const t = ctx.currentTime + delay;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noiseBuffer(3);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.frequency.value = 160;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, ctx.currentTime);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(0.5, t + 0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
     src.connect(f).connect(g).connect(this.master!);
     src.start(t);
   }

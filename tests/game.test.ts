@@ -5,7 +5,10 @@ import {
   NO_INPUT,
   OIL_MAX,
   PLAYER_H,
+  WIND_CYCLE,
   baseRadius,
+  calmLeft,
+  windAt,
   type Input,
 } from '@/game/game';
 import { TILE, isGround, parseLevel, type LevelDef } from '@/game/level';
@@ -13,8 +16,8 @@ import { LEVELS } from '@/game/levels';
 
 const DT = 1 / 60;
 
-function make(rows: string[], hints?: string[]): Game {
-  const def: LevelDef = { id: 'test', name: 'test', world: 'forest', rows, hints };
+function make(rows: string[], hints?: string[], world: LevelDef['world'] = 'forest'): Game {
+  const def: LevelDef = { id: 'test', name: 'test', world, rows, hints };
   return new Game(parseLevel(def));
 }
 
@@ -322,5 +325,54 @@ describe('nové svety', () => {
     }
     expect(shade.alive).toBe(false);
     expect(hits).toBe(3);
+  });
+
+  it('vietor fúka v nárazoch: najprv bezvetrie, potom náraz proti hráčovi', () => {
+    expect(windAt(0)).toBe(0);
+    expect(calmLeft(0)).toBeGreaterThan(3);
+    expect(windAt(5)).toBe(-1);
+    expect(calmLeft(5)).toBe(0);
+    expect(windAt(2 * WIND_CYCLE + 5)).toBe(1);
+  });
+
+  it('náraz vetra odfúkne hráča vo vzduchu, stojaceho nie', () => {
+    const rows = [
+      '                              ',
+      '              P              E',
+      '##############################',
+    ];
+    const standing = make(rows, undefined, 'storm');
+    run(standing, 5);
+    const x = standing.player.x;
+    run(standing, 1);
+    expect(standing.wind).toBe(-1);
+    expect(standing.player.x).toBe(x);
+
+    const jumping = make(rows, undefined, 'storm');
+    run(jumping, 5);
+    const x0 = jumping.player.x;
+    run(jumping, 0.5, { jump: true });
+    expect(jumping.player.x).toBeLessThan(x0 - 20);
+  });
+
+  it('za skalou je hráč v závetrí', () => {
+    const game = make(
+      ['                    ', '          P#       E', '####################'],
+      undefined,
+      'storm',
+    );
+    run(game, 5);
+    expect(game.wind).toBe(-1);
+    expect(game.sheltered).toBe(true);
+    // Krok od skaly už závetrie nedáva.
+    game.player.x -= 2 * TILE;
+    run(game, DT);
+    expect(game.sheltered).toBe(false);
+  });
+
+  it('mimo búrky nefúka', () => {
+    const game = make(FLAT);
+    run(game, 6);
+    expect(game.wind).toBe(0);
   });
 });
