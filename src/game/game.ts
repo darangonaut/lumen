@@ -22,16 +22,19 @@ export const NO_INPUT: Input = {
 
 // --- Pohyb (px, s) ---
 // Pokojné tempo kvôli temnej atmosfére; skok je pomalší a plávavejší, s podobným dosahom ako predtým.
-export const GRAVITY = 720;
-const MAX_FALL = 310;
+export const GRAVITY = 560;
+const MAX_FALL = 240;
 export const RUN_SPEED = 85;
 const GROUND_ACCEL = 650;
 const AIR_ACCEL = 450;
 const FRICTION = 800;
-export const JUMP_SPEED = 288;
+export const JUMP_SPEED = 262;
 const JUMP_CUT = 0.45;
 const COYOTE = 0.1;
 const JUMP_BUFFER = 0.12;
+/** Na vrchole skoku (pomalý zvislý pohyb) gravitácia slabne — postavička sa chvíľu vznáša. */
+const APEX_SPEED = 70;
+const APEX_GRAVITY = 0.45;
 export const PLAYER_W = 8;
 export const PLAYER_H = 13;
 
@@ -347,7 +350,8 @@ export class Game {
       this.events.push({ type: 'jump' });
     }
 
-    p.vy = Math.min(MAX_FALL, p.vy + GRAVITY * dt);
+    const apex = !p.onGround && this.jumpHeld && Math.abs(p.vy) < APEX_SPEED;
+    p.vy = Math.min(MAX_FALL, p.vy + GRAVITY * (apex ? APEX_GRAVITY : 1) * dt);
     const lights = this.lights();
     this.moveX(p.vx * dt, lights);
     const wasOnGround = p.onGround;

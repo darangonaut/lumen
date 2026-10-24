@@ -32,7 +32,13 @@ export function botRun(game: Game, seconds = 180): { done: boolean; col: number;
       tileAt(level, front, row) === Tile.Ground ||
       tileAt(level, front, row) === Tile.Crumble ||
       (tileAt(level, front, row) === Tile.Light && game.isTileLit(front, row));
-    const gap = !solidish(ahead(2), feet);
+    // Priepasť preskočí; keď je pod hranou nižšia plošina, radšej z hrany zíde (ako hráč).
+    const below = (test: (c: number, r: number) => boolean) =>
+      [2, 10, 18].some((d) => [0, 1, 2, 3].some((r) => test(ahead(d), feet + r)));
+    const lower =
+      below((c, r) => r > feet && solidish(c, r) && !solidish(c, r - 1)) &&
+      !below((c, r) => tileAt(level, c, r) === Tile.Thorns);
+    const gap = !solidish(ahead(2), feet) && !lower;
     const thorns = [2, 6].some((d) => tileAt(level, ahead(d), row) === Tile.Thorns);
     // Plošina vyššie pred ním, na ktorú sa dá vyskočiť.
     let step = false;
@@ -41,7 +47,7 @@ export function botRun(game: Game, seconds = 180): { done: boolean; col: number;
         if (solidish(ahead(d), r) && !solidish(ahead(d), r - 1)) step = true;
       }
     }
-    if (p.onGround && (wall || gap || thorns || step)) hold = 0.45;
+    if (p.onGround && (wall || gap || thorns || step)) hold = 0.65;
     const jump = hold > 0;
     hold -= dt;
     // Preskočil vatru: vráti sa k nej pešo.
@@ -49,7 +55,11 @@ export function botRun(game: Game, seconds = 180): { done: boolean; col: number;
       game.step(dt, { ...NO_INPUT, left: true });
       continue;
     }
-    game.step(dt, { ...NO_INPUT, right: true, jump });
+    // Vo vzduchu nad plošinou pribrzdí opačnou šípkou, aby ju nepreletel (ako hráč).
+    const under = Math.floor((p.x + PLAYER_W / 2) / TILE);
+    const brake =
+      !p.onGround && p.vy > -40 && [0, 1, 2, 3, 4].some((d) => solidish(under, feet + d));
+    game.step(dt, { ...NO_INPUT, right: !brake, left: brake && p.vx > 20, jump });
     best = Math.max(best, Math.floor(p.x / TILE));
   }
   return { done: game.state === 'done', col: best, deaths: game.deaths };
