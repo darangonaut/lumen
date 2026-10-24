@@ -1,14 +1,29 @@
-import { Game, NO_INPUT, PLAYER_H, PLAYER_W } from '@/game/game';
-import { TILE, Tile, tileAt } from '@/game/level';
+import { Game, MOVER_W, NO_INPUT, PLAYER_H, PLAYER_W, type Input } from '@/game/game';
+import { TILE, Tile, isGround, tileAt } from '@/game/level';
 
 /**
- * Jednoduchý bot: beží doprava a skáče pred stenou, priepasťou a tŕňmi.
- * Overuje len geometriu (olej dopĺňa, tiene vypína). Vráti najďalší stĺpec.
+ * Jednoduchý bot: beží doprava a skáče pred stenou, priepasťou a tŕňmi; na pohyblivé
+ * plošiny počká a nechá sa odviezť. Overuje len geometriu (olej dopĺňa, tiene a mory
+ * vypína). Vráti, či došiel k vatre, najďalší stĺpec a počet pádov.
  */
-export function botRun(game: Game, seconds = 180): { done: boolean; col: number; deaths: number } {
+export function botRun(game: Game, seconds = 240): { done: boolean; col: number; deaths: number } {
   const dt = 1 / 60;
   let hold = 0;
   let best = 0;
+  const level = game.level;
+  const solidish = (c: number, r: number) => {
+    const tile = tileAt(level, c, r);
+    return (
+      isGround(tile) ||
+      tile === Tile.Ledge ||
+      tile === Tile.Crumble ||
+      (tile === Tile.Light && game.isTileLit(c, r))
+    );
+  };
+  /** Dá sa naň postaviť: pevné políčko s voľným miestom nad ním. */
+  const landable = (c: number, r: number) =>
+    solidish(c, r) && !solidish(c, r - 1) && tileAt(level, c, r - 1) !== Tile.Thorns;
+
   for (let t = 0; t < seconds && game.state !== 'done'; t += dt) {
     game.oil = 100;
     for (const s of game.shades) s.alive = false;
@@ -18,49 +33,82 @@ export function botRun(game: Game, seconds = 180): { done: boolean; col: number;
     const ahead = (d: number) => Math.floor((p.x + PLAYER_W + d) / TILE);
     const feet = Math.floor((p.y + PLAYER_H + 2) / TILE);
     const row = Math.floor((p.y + PLAYER_H - 2) / TILE);
-    const level = game.level;
-    const solidish = (c: number, r: number) => {
-      const tile = tileAt(level, c, r);
-      return (
-        tile === Tile.Ground ||
-        tile === Tile.Ledge ||
-        tile === Tile.Crumble ||
-        (tile === Tile.Light && game.isTileLit(c, r))
-      );
+    const feetY = p.y + PLAYER_H;
+
+    const step = (input: Partial<Input>) => {
+      game.step(dt, { ...NO_INPUT, ...input });
+      best = Math.max(best, Math.floor(p.x / TILE));
     };
+
+    // Preskočil vatru: vráti sa k nej pešo.
+    if (p.x > level.exit.x + 8 && p.onGround) {
+      step({ left: true });
+      continue;
+    }
+
+    // Na pohyblivej plošine: čaká, kým je pred ním pevná zem na dosah, potom zíde/skočí.
+    if (game.onMover >= 0) {
+      let target: { c: number; r: number } | null = null;
+      for (let d = 2; d <= 40 && !target; d += 6)
+        for (let r = feet - 3; r <= feet + 1; r++)
+          if (landable(ahead(d), r)) {
+            target = { c: ahead(d), r };
+            break;
+          }
+      if (target) step({ right: true, jump: target.r < feet });
+      else step({});
+      continue;
+    }
+
     const wall =
-      tileAt(level, front, row) === Tile.Ground ||
+      isGround(tileAt(level, front, row)) ||
       tileAt(level, front, row) === Tile.Crumble ||
       (tileAt(level, front, row) === Tile.Light && game.isTileLit(front, row));
     // Priepasť preskočí; keď je pod hranou nižšia plošina, radšej z hrany zíde (ako hráč).
     const below = (test: (c: number, r: number) => boolean) =>
       [2, 10, 18].some((d) => [0, 1, 2, 3].some((r) => test(ahead(d), feet + r)));
     const lower =
-      below((c, r) => r > feet && solidish(c, r) && !solidish(c, r - 1)) &&
+      below((c, r) => r > feet && landable(c, r)) &&
       !below((c, r) => tileAt(level, c, r) === Tile.Thorns);
     const gap = !solidish(ahead(2), feet) && !lower;
-    const thorns = [2, 6].some((d) => tileAt(level, ahead(d), row) === Tile.Thorns);
-    // Plošina vyššie pred ním, na ktorú sa dá vyskočiť.
-    let step = false;
-    for (let d = 4; d <= 24 && !step; d += 4) {
-      for (let r = row - 3; r <= row - 1; r++) {
-        if (solidish(ahead(d), r) && !solidish(ahead(d), r - 1)) step = true;
+
+    // Pred priepasťou s pohyblivou plošinou počká, kým plošina pripláva na dosah.
+    if (p.onGround && gap) {
+      const near = game.movers.filter((m) => m.x + MOVER_W > p.x && m.x < p.x + 8 * TILE);
+      if (near.length) {
+        const ready = near.find(
+          (m) =>
+            m.x <= p.x + PLAYER_W + 6 &&
+            m.x + MOVER_W >= p.x + PLAYER_W + 12 &&
+            m.y >= feetY - 6 &&
+            m.y <= feetY + 20,
+        );
+        step(ready ? { right: true } : {});
+        continue;
       }
     }
-    if (p.onGround && (wall || gap || thorns || step)) hold = 0.65;
+
+    const thorns = [2, 6].some((d) => tileAt(level, ahead(d), row) === Tile.Thorns);
+    // Plošina vyššie pred ním, na ktorú sa dá vyskočiť.
+    let up = false;
+    for (let d = 4; d <= 24 && !up; d += 4)
+      for (let r = row - 3; r <= row - 1; r++) if (landable(ahead(d), r)) up = true;
+    if (p.onGround && (wall || gap || thorns || up)) hold = 0.65;
     const jump = hold > 0;
     hold -= dt;
-    // Preskočil vatru: vráti sa k nej pešo.
-    if (p.x > game.level.exit.x + 8 && p.onGround) {
-      game.step(dt, { ...NO_INPUT, left: true });
-      continue;
-    }
     // Vo vzduchu nad plošinou pribrzdí opačnou šípkou, aby ju nepreletel (ako hráč).
     const under = Math.floor((p.x + PLAYER_W / 2) / TILE);
+    const overMover = game.movers.some(
+      (m) => m.x < p.x + PLAYER_W && m.x + MOVER_W > p.x && m.y > feetY && m.y < feetY + 3 * TILE,
+    );
+    // Ak je hneď pred ním hrana, na ktorú práve vyskakuje, nebrzdí.
+    const ledgeAhead = [feet - 1, feet].some((r) => landable(ahead(4), r));
     const brake =
-      !p.onGround && p.vy > -40 && [0, 1, 2, 3, 4].some((d) => solidish(under, feet + d));
-    game.step(dt, { ...NO_INPUT, right: !brake, left: brake && p.vx > 20, jump });
-    best = Math.max(best, Math.floor(p.x / TILE));
+      !p.onGround &&
+      !ledgeAhead &&
+      p.vy > -40 &&
+      ((overMover && p.vy > 40) || [0, 1, 2, 3, 4].some((d) => landable(under, feet + d)));
+    step({ right: !brake, left: brake && p.vx > 20, jump });
   }
   return { done: game.state === 'done', col: best, deaths: game.deaths };
 }

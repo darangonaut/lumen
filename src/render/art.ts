@@ -6,9 +6,15 @@ import type { PlayerFrame } from './common';
  * Sada kreslenia: všetky textúry a terén. Rozmery textúr sú v jednotkách sveta
  * (políčko = 16), renderer s nimi zaobchádza ako so spritmi.
  */
+/** Vlastnosti sveta pre renderer: sila tmy, mesiac a častice vo vzduchu. */
+export interface WorldInfo {
+  darkness: number;
+  moon: boolean;
+  ambient: 'motes' | 'wisps' | 'snow' | 'dust' | 'embers';
+}
+
 export interface Art {
-  /** Sila tmy podľa sveta (0–1). */
-  darkness(world: World): number;
+  info(world: World): WorldInfo;
   terrain(level: Level): Container;
   player(frame: PlayerFrame | 'breathe'): Texture;
   shade(frame: number, burning: boolean): Texture;
@@ -23,7 +29,10 @@ export interface Art {
   lightTile(): Texture;
   moth(frame: number): Texture;
   spark(): Texture;
-  water(frame: number): Texture;
+  water(frame: number, world: World): Texture;
+  bounce(squash: boolean): Texture;
+  icicle(): Texture;
+  mover(): Texture;
   crumble(): Texture;
   moon(): Texture;
   /** Okrúhla častica danej farby a priemeru. */

@@ -1,4 +1,4 @@
-import { TILE, Tile, tileAt, type Level, type Point, type Sign } from './level';
+import { TILE, Tile, isGround, tileAt, type Level, type Point, type Sign } from './level';
 import { Rng } from './rng';
 
 export interface Input {
@@ -30,6 +30,7 @@ const AIR_ACCEL = 450;
 const FRICTION = 800;
 export const JUMP_SPEED = 262;
 const JUMP_CUT = 0.45;
+const STEP_UP = 2;
 const COYOTE = 0.1;
 const JUMP_BUFFER = 0.12;
 /** Na vrchole skoku (pomalý zvislý pohyb) gravitácia slabne — postavička sa chvíľu vznáša. */
@@ -57,6 +58,20 @@ const STOMP_BOUNCE = 210;
 /** Koľko oleja za sekundu vypije jedna mora prisatá k lampášu. */
 export const MOTH_DRAIN = 4;
 const CRUMBLE_DELAY = 0.6;
+/** Skákacia huba vymrští asi o 6 políčok. */
+export const BOUNCE_SPEED = 340;
+/** Ľad: slabé zrýchlenie a takmer žiadne trenie. */
+const ICE_ACCEL = 170;
+const ICE_FRICTION = 55;
+const ICICLE_DELAY = 0.45;
+const ICICLE_GRAVITY = 900;
+/** Pohyblivé plošiny: šírka, dráha a čas jednej cesty. */
+export const MOVER_W = 32;
+export const MOVER_H = 5;
+const MOVER_RANGE = 64;
+const MOVER_TRIP = 2.2;
+/** Koľko zásahov vydrží veľký tieň. */
+export const BIG_SHADE_HITS = 3;
 const CRUMBLE_RESPAWN = 3;
 /** Koľko sekúnd vydrží hráč v úplnej tme (bez oleja), kým ho tma pohltí. */
 export const DREAD_LIMIT = 4;
@@ -76,12 +91,16 @@ export type GameEvent =
   | { type: 'throw' }
   | { type: 'fizzle'; x: number; y: number }
   | { type: 'crumble'; x: number; y: number }
+  | { type: 'bounce'; x: number; y: number }
+  | { type: 'icicle'; x: number; y: number }
+  | { type: 'shatter'; x: number; y: number }
+  | { type: 'shadeHit'; x: number; y: number }
   | { type: 'lunge' }
   | { type: 'died'; cause: DeathCause }
   | { type: 'respawn' }
   | { type: 'exit' };
 
-export type DeathCause = 'thorns' | 'fall' | 'dark' | 'water';
+export type DeathCause = 'thorns' | 'fall' | 'dark' | 'water' | 'icicle';
 
 export interface Player {
   /** Ľavý horný roh hitboxu. */
@@ -111,6 +130,28 @@ export interface Shade {
   dirY: number;
   /** Práve horí vo svetle (pre efekty). */
   burning: boolean;
+  /** Veľký tieň: vydrží viac zásahov. */
+  big: boolean;
+  hits: number;
+}
+
+export interface Icicle {
+  x: number;
+  y: number;
+  home: Point;
+  state: 'hang' | 'shake' | 'fall' | 'gone';
+  timer: number;
+  vy: number;
+}
+
+export interface Mover {
+  /** Ľavý horný roh. */
+  x: number;
+  y: number;
+  origin: Point;
+  axis: 'h' | 'v';
+  dx: number;
+  dy: number;
 }
 
 /** Mora: letí za svetlom a pije olej z lampáša. */
@@ -172,6 +213,12 @@ export class Game {
   readonly sparks: Spark[] = [];
   readonly crumbles: Crumble[] = [];
   private crumbleAt = new Map<number, Crumble>();
+  readonly icicles: Icicle[];
+  readonly movers: Mover[];
+  /** Index plošiny, na ktorej hráč stojí (−1 = žiadna). */
+  onMover = -1;
+  /** Hráč stojí na ľade. */
+  onIce = false;
   private sparkCooldown = 0;
   private sparkHeld = false;
   exitLit = false;
@@ -202,7 +249,7 @@ export class Game {
     this.fireflies = level.fireflies.map((p) => ({ ...p, taken: false }));
     this.crystals = level.crystals.map((p) => ({ ...p, taken: false }));
     this.lanterns = level.lanterns.map((p) => ({ ...p, lit: false }));
-    this.shades = level.shades.map((p) => ({
+    const shade = (p: Point, big: boolean): Shade => ({
       x: p.x,
       y: p.y,
       home: { ...p },
@@ -217,6 +264,28 @@ export class Game {
       dirX: 0,
       dirY: 0,
       burning: false,
+      big,
+      hits: big ? BIG_SHADE_HITS : 1,
+    });
+    this.shades = [
+      ...level.shades.map((p) => shade(p, false)),
+      ...level.bigShades.map((p) => shade(p, true)),
+    ];
+    this.icicles = level.icicles.map((p) => ({
+      x: p.x,
+      y: p.y - TILE / 2,
+      home: { x: p.x, y: p.y - TILE / 2 },
+      state: 'hang',
+      timer: 0,
+      vy: 0,
+    }));
+    this.movers = level.movers.map((m) => ({
+      x: m.x,
+      y: m.y,
+      origin: { x: m.x, y: m.y },
+      axis: m.axis,
+      dx: 0,
+      dy: 0,
     }));
     this.moths = level.moths.map((p) => ({
       x: p.x,
@@ -293,11 +362,15 @@ export class Game {
       this.updateMoths(dt);
       this.updateSparks(dt);
       this.updateCrumbles(dt);
+      this.updateMovers();
+      this.updateIcicles(dt);
       return this.events;
     }
     this.updateLight(dt, input);
     this.updateCrumbles(dt);
+    this.updateMovers();
     this.updatePlayer(dt, input);
+    this.updateIcicles(dt);
     this.throwSpark(dt, input);
     this.updateSparks(dt);
     if (this.state === 'play') this.updateShades(dt);
@@ -326,12 +399,13 @@ export class Game {
     const p = this.player;
     p.invulnerable = Math.max(0, p.invulnerable - dt);
     const move = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    const ice = p.onGround && this.onIce;
     if (move !== 0) {
       p.facing = move > 0 ? 1 : -1;
-      const accel = p.onGround ? GROUND_ACCEL : AIR_ACCEL;
+      const accel = ice ? ICE_ACCEL : p.onGround ? GROUND_ACCEL : AIR_ACCEL;
       p.vx = approach(p.vx, move * RUN_SPEED, accel * dt);
     } else if (p.onGround) {
-      p.vx = approach(p.vx, 0, FRICTION * dt);
+      p.vx = approach(p.vx, 0, (ice ? ICE_FRICTION : FRICTION) * dt);
     } else {
       p.vx = approach(p.vx, 0, AIR_ACCEL * 0.4 * dt);
     }
@@ -353,10 +427,19 @@ export class Game {
     const apex = !p.onGround && this.jumpHeld && Math.abs(p.vy) < APEX_SPEED;
     p.vy = Math.min(MAX_FALL, p.vy + GRAVITY * (apex ? APEX_GRAVITY : 1) * dt);
     const lights = this.lights();
+    // Plošina, na ktorej hráč stojí, ho vezie so sebou.
+    const carrier = this.movers[this.onMover];
+    if (carrier) {
+      this.moveX(carrier.dx, lights);
+      p.y += carrier.dy;
+    }
     this.moveX(p.vx * dt, lights);
     const wasOnGround = p.onGround;
     this.moveY(p.vy * dt, lights, input.down);
+    this.landOnMovers();
     if (p.onGround && !wasOnGround) this.events.push({ type: 'land' });
+    this.onIce = p.onGround && this.onMover < 0 && this.groundBelow() === Tile.Ice;
+    if (p.onGround && this.onMover < 0 && this.groundBelow() === Tile.Bounce) this.bounce();
 
     if (this.touchesThorns()) this.die('thorns');
     else if (this.inWater()) this.die('water');
@@ -366,7 +449,7 @@ export class Game {
   /** Pevné políčko pre pohyb; svetelné plošiny, v ktorých hráč už stojí, ho nezaseknú. */
   private solid(col: number, row: number, lights: LightSource[], overlapping: boolean): boolean {
     const tile = tileAt(this.level, col, row);
-    if (tile === Tile.Ground) return true;
+    if (isGround(tile)) return true;
     if (tile === Tile.Crumble)
       return this.crumbleAt.get(row * this.level.width + col)?.state !== 'gone';
     if (tile === Tile.Light) return !overlapping && this.isTileLit(col, row, lights);
@@ -378,7 +461,8 @@ export class Game {
     if (dx === 0) return;
     p.x += dx;
     const top = Math.floor(p.y / TILE);
-    const bottom = Math.floor((p.y + PLAYER_H - 0.01) / TILE);
+    // Tolerancia schodíka: hrana nižšia ako 2 px nezastaví (napr. plošina tesne pod rímsou).
+    const bottom = Math.floor((p.y + PLAYER_H - STEP_UP) / TILE);
     const col = dx > 0 ? Math.floor((p.x + PLAYER_W - 0.01) / TILE) : Math.floor(p.x / TILE);
     for (let row = top; row <= bottom; row++) {
       if (this.solid(col, row, lights, this.overlapsTileAt(col, row, p.x - dx, p.y))) {
@@ -435,6 +519,104 @@ export class Game {
           p.vy = 0;
           return;
         }
+      }
+    }
+  }
+
+  /** Dlaždica pod chodidlami (pod stredom hráča). */
+  private groundBelow(): Tile {
+    const p = this.player;
+    const row = Math.floor((p.y + PLAYER_H + 1) / TILE);
+    const center = tileAt(this.level, Math.floor((p.x + PLAYER_W / 2) / TILE), row);
+    if (center !== Tile.Empty) return center;
+    // Na hrane: stačí, ak je huba či ľad aspoň pod jednou nohou.
+    const left = tileAt(this.level, Math.floor(p.x / TILE), row);
+    return left !== Tile.Empty
+      ? left
+      : tileAt(this.level, Math.floor((p.x + PLAYER_W - 0.01) / TILE), row);
+  }
+
+  private bounce(): void {
+    const p = this.player;
+    p.vy = -BOUNCE_SPEED;
+    p.onGround = false;
+    this.coyote = 0;
+    const c = this.center;
+    this.events.push({ type: 'bounce', x: c.x, y: p.y + PLAYER_H });
+  }
+
+  /** Poloha plošín: plynulo tam a späť (kosínus), zvislé stúpajú nahor. */
+  private updateMovers(): void {
+    const omega = Math.PI / MOVER_TRIP;
+    for (const [i, m] of this.movers.entries()) {
+      const offset = (MOVER_RANGE / 2) * (1 - Math.cos(this.time * omega + i * 0.9));
+      const x = m.axis === 'h' ? m.origin.x + offset : m.origin.x;
+      const y = m.axis === 'v' ? m.origin.y - offset : m.origin.y;
+      m.dx = x - m.x;
+      m.dy = y - m.y;
+      m.x = x;
+      m.y = y;
+    }
+  }
+
+  /** Pristátie na plošine zhora (ako na lávke). */
+  private landOnMovers(): void {
+    const p = this.player;
+    const prev = this.onMover;
+    this.onMover = -1;
+    if (p.vy < 0) return;
+    for (const [i, m] of this.movers.entries()) {
+      if (p.x + PLAYER_W <= m.x + 1 || p.x >= m.x + MOVER_W - 1) continue;
+      const bottom = p.y + PLAYER_H;
+      // Tolerancia: plošina sa medzičasom mohla posunúť proti hráčovi.
+      const reach = Math.max(4, p.vy / 60 + 2) + (i === prev ? 3 : 0);
+      if (bottom < m.y - 0.5 || bottom > m.y + reach) continue;
+      p.y = m.y - PLAYER_H;
+      p.vy = 0;
+      p.onGround = true;
+      this.onMover = i;
+      return;
+    }
+  }
+
+  private updateIcicles(dt: number): void {
+    const c = this.center;
+    for (const ic of this.icicles) {
+      if (ic.state === 'gone') continue;
+      if (ic.state === 'hang') {
+        // Spadne, keď hráč prechádza pod ním.
+        if (
+          this.state === 'play' &&
+          Math.abs(c.x - ic.x) < 18 &&
+          c.y > ic.y &&
+          c.y - ic.y < 7 * TILE
+        ) {
+          ic.state = 'shake';
+          ic.timer = ICICLE_DELAY;
+          this.events.push({ type: 'icicle', x: ic.x, y: ic.y });
+        }
+        continue;
+      }
+      if (ic.state === 'shake') {
+        ic.timer -= dt;
+        if (ic.timer <= 0) ic.state = 'fall';
+        continue;
+      }
+      ic.vy = Math.min(420, ic.vy + ICICLE_GRAVITY * dt);
+      ic.y += ic.vy * dt;
+      const tip = ic.y + 12;
+      if (
+        this.state === 'play' &&
+        Math.abs(c.x - ic.x) < 6 &&
+        tip > this.player.y &&
+        ic.y < this.player.y + PLAYER_H
+      ) {
+        this.die('icicle');
+      }
+      const tile = tileAt(this.level, Math.floor(ic.x / TILE), Math.floor(tip / TILE));
+      if (isGround(tile) || tile === Tile.Water || tip > this.level.height * TILE) {
+        ic.state = 'gone';
+        this.events.push({ type: 'shatter', x: ic.x, y: Math.min(tip, this.level.height * TILE) });
       }
     }
   }
@@ -504,14 +686,14 @@ export class Game {
       const row = Math.floor(sp.y / TILE);
       const tile = tileAt(this.level, col, row);
       const blocked =
-        tile === Tile.Ground ||
+        isGround(tile) ||
         tile === Tile.Water ||
         (tile === Tile.Crumble &&
           this.crumbleAt.get(row * this.level.width + col)?.state !== 'gone');
       let hit = false;
       for (const s of this.shades) {
-        if (!s.alive || Math.hypot(s.x - sp.x, s.y - sp.y) > 11) continue;
-        this.killShade(s);
+        if (!s.alive || Math.hypot(s.x - sp.x, s.y - sp.y) > (s.big ? 18 : 11)) continue;
+        this.hitShade(s);
         hit = true;
       }
       for (const m of this.moths) {
@@ -531,6 +713,18 @@ export class Game {
     this.events.push({ type: 'shadeDie', x: s.x, y: s.y });
   }
 
+  /** Zásah (skok na hlavu, iskra): veľký tieň vydrží viac, potom zmizne. */
+  private hitShade(s: Shade): void {
+    s.hits--;
+    if (s.hits <= 0) {
+      this.killShade(s);
+      return;
+    }
+    this.events.push({ type: 'shadeHit', x: s.x, y: s.y });
+    this.recoil(s);
+    s.timer = 1.4;
+  }
+
   private killMoth(m: Moth): void {
     m.alive = false;
     m.drinking = false;
@@ -542,8 +736,10 @@ export class Game {
     const p = this.player;
     if (this.state !== 'play' || p.vy <= 0) return false;
     const feet = p.y + PLAYER_H;
-    if (Math.abs(p.x + PLAYER_W / 2 - s.x) > 10 || feet < s.y - 9 || feet > s.y + 4) return false;
-    this.killShade(s);
+    const size = s.big ? 1.8 : 1;
+    if (Math.abs(p.x + PLAYER_W / 2 - s.x) > 10 * size || feet < s.y - 9 * size || feet > s.y + 4)
+      return false;
+    this.hitShade(s);
     p.vy = -(this.jumpHeld ? JUMP_SPEED : STOMP_BOUNCE);
     p.onGround = false;
     this.events.push({ type: 'stomp', x: s.x, y: s.y });
@@ -615,7 +811,7 @@ export class Game {
         const burns = isPlayer ? this.flaring && d < l.radius * 0.9 : d < l.radius * 0.8;
         if (!burns) continue;
         s.burning = true;
-        s.hp -= dt * 2.6;
+        s.hp -= dt * (s.big ? 0.9 : 2.6);
         // Ustupuje od svetla.
         const away = Math.hypot(s.x - l.x, s.y - l.y) || 1;
         s.vx += ((s.x - l.x) / away) * 260 * dt;
@@ -647,7 +843,8 @@ export class Game {
         const speed = s.burning ? 70 : 125;
         s.vx = s.dirX * speed;
         s.vy = s.dirY * speed;
-        if (dist < 10 && this.player.invulnerable <= 0 && this.state === 'play') this.hurt(s);
+        if (dist < (s.big ? 16 : 10) && this.player.invulnerable <= 0 && this.state === 'play')
+          this.hurt(s);
         else if (s.timer <= 0) this.recoil(s);
       } else {
         steer(s, s.x - dx, s.y - dy, 64, dt);
@@ -731,6 +928,13 @@ export class Game {
     this.radius = LIGHT_RADIUS;
     this.dread = 0;
     this.sparks.length = 0;
+    this.onMover = -1;
+    for (const ic of this.icicles) {
+      ic.x = ic.home.x;
+      ic.y = ic.home.y;
+      ic.vy = 0;
+      ic.state = 'hang';
+    }
     for (const m of this.moths) {
       m.x = m.home.x;
       m.y = m.home.y;

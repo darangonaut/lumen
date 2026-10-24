@@ -8,7 +8,7 @@ import {
   baseRadius,
   type Input,
 } from '@/game/game';
-import { TILE, Tile, parseLevel, type LevelDef } from '@/game/level';
+import { TILE, isGround, parseLevel, type LevelDef } from '@/game/level';
 import { LEVELS } from '@/game/levels';
 
 const DT = 1 / 60;
@@ -41,7 +41,7 @@ describe('levely', () => {
       for (const l of level.lanterns) {
         const col = Math.floor(l.x / TILE);
         let row = Math.floor(l.y / TILE) + 1;
-        while (row < level.height && level.tiles[row * level.width + col] !== Tile.Ground) row++;
+        while (row < level.height && !isGround(level.tiles[row * level.width + col]!)) row++;
         expect(row, `${def.id} lampa na stĺpci ${col}`).toBeLessThan(level.height);
       }
     }
@@ -248,5 +248,79 @@ describe('boj a jaskyne', () => {
     game.player.x = 10 * TILE;
     run(game, 4);
     expect(game.crumbles.every((c) => c.state === 'solid')).toBe(true);
+  });
+});
+
+describe('nové svety', () => {
+  it('skákacia huba vymrští vyššie ako skok', () => {
+    const game = make([
+      '             ',
+      '             ',
+      '             ',
+      '             ',
+      '             ',
+      '             ',
+      '             ',
+      ' P          E',
+      '###b#########',
+    ]);
+    let top = Infinity;
+    for (let t = 0; t < 2; t += DT) {
+      const events = game.step(DT, { ...NO_INPUT, right: t < 0.5 });
+      if (events.some((e) => e.type === 'bounce')) top = game.player.y;
+      top = Math.min(top, game.player.y);
+    }
+    expect(7 * TILE - top).toBeGreaterThan(5 * TILE);
+  });
+
+  it('na ľade sa postavička kĺže', () => {
+    const ice = make([' P                       E', 'iiiiiiiiiiiiiiiiiiiiiiiiii']);
+    const rock = make([' P                       E', '##########################']);
+    for (const g of [ice, rock]) {
+      run(g, 1.2, { right: true });
+      run(g, 0.4);
+    }
+    expect(ice.player.vx).toBeGreaterThan(rock.player.vx + 30);
+  });
+
+  it('cencúľ spadne a zabije, keď pod ním hráč stojí', () => {
+    const game = make(['#########', '   v     ', '         ', ' P      E', '#########']);
+    game.player.x = 3 * TILE + 4;
+    const events = run(game, 2);
+    expect(events).toContainEqual({ type: 'died', cause: 'icicle' });
+  });
+
+  it('pohyblivá plošina vezie hráča', () => {
+    const game = make([
+      '                ',
+      ' P              E',
+      '##H         #####',
+      '                ',
+    ]);
+    game.player.x = 2 * TILE + 8;
+    game.player.y = 2 * TILE - 13 - 2;
+    run(game, 0.2);
+    expect(game.onMover).toBe(0);
+    const x = game.player.x;
+    run(game, 1.5);
+    expect(game.player.x).toBeGreaterThan(x + 20);
+    expect(game.state).toBe('play');
+  });
+
+  it('veľký tieň vydrží tri zásahy iskrou', () => {
+    const game = make([' P      S      E', '################']);
+    run(game, 0.3);
+    const shade = game.shades[0]!;
+    expect(shade.big).toBe(true);
+    let hits = 0;
+    for (let i = 0; i < 6 && shade.alive; i++) {
+      shade.x = game.lamp.x + 30;
+      shade.y = game.lamp.y;
+      shade.home = { x: shade.x, y: shade.y };
+      const events = [...game.step(DT, { ...NO_INPUT, spark: true }), ...run(game, 0.5)];
+      hits += events.filter((e) => e.type === 'shadeHit' || e.type === 'shadeDie').length;
+    }
+    expect(shade.alive).toBe(false);
+    expect(hits).toBe(3);
   });
 });

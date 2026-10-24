@@ -17,7 +17,8 @@ import {
   type GameEvent,
   type LightSource,
 } from '@/game/game';
-import { TILE, Tile, tileAt } from '@/game/level';
+import { TILE, Tile, isGround, tileAt, type World } from '@/game/level';
+import type { WorldInfo } from './art';
 import { C, PLAYER_FRAMES, decorOf, lightCanvas, type PlayerFrame } from './common';
 import { vectorArt as art } from './vector';
 
@@ -29,6 +30,8 @@ interface Particle {
   life: number;
   age: number;
   fade: boolean;
+  /** Počiatočná priehľadnosť (blednutím klesá k nule). */
+  alpha: number;
 }
 
 const WARM = 0xffa848;
@@ -83,17 +86,19 @@ export class Renderer {
     wisp: Texture.EMPTY,
     dust: Texture.EMPTY,
     stone: Texture.EMPTY,
+    snow: Texture.EMPTY,
     moth: [] as Texture[],
     sparkBall: Texture.EMPTY,
     water: [] as Texture[],
     crumble: Texture.EMPTY,
+    bounce: [Texture.EMPTY, Texture.EMPTY],
+    icicle: Texture.EMPTY,
+    mover: Texture.EMPTY,
     moon: Texture.EMPTY,
   };
-  /** Pozadia svetov: nebo/jaskyňa, vzdialené a bližšie siluety. */
-  private backs = {
-    forest: { sky: Texture.EMPTY, far: Texture.EMPTY, near: Texture.EMPTY },
-    caves: { sky: Texture.EMPTY, far: Texture.EMPTY, near: Texture.EMPTY },
-  };
+  /** Pozadia a voda podľa sveta (vytvárajú sa pri prvom použití). */
+  private backs = new Map<World, { sky: Texture; far: Texture; near: Texture; water: Texture[] }>();
+  private ambient: WorldInfo['ambient'] = 'motes';
   private darkness = 0.6;
   private mothSprites: Sprite[] = [];
   private sparkSprites: Sprite[] = [];
@@ -106,6 +111,9 @@ export class Renderer {
   private lanternSprites: Sprite[] = [];
   private flames: Sprite[] = [];
   private mushrooms: { x: number; y: number }[] = [];
+  private bounceSprites: { sprite: Sprite; x: number; y: number; squash: number }[] = [];
+  private icicleSprites: Sprite[] = [];
+  private moverSprites: Sprite[] = [];
 
   async init(host: HTMLElement): Promise<void> {
     await this.app.init({
@@ -125,13 +133,15 @@ export class Renderer {
     this.tex.wisp = art.dot('#0d0f18', 2.4);
     this.tex.dust = art.dot('#3a4458', 1.4);
     this.tex.stone = art.dot('#0d0f18', 2);
+    this.tex.snow = art.dot('#ffffff', 1.6);
     this.buildTextures();
 
     // Pozadie: nebo, mesiac, kopce a stromy s paralaxou.
-    this.sky = new TilingSprite({ texture: this.backs.forest.sky, width: 320, height: 240 });
+    const forest = this.back('forest');
+    this.sky = new TilingSprite({ texture: forest.sky, width: 320, height: 240 });
     this.moon = new Sprite(this.tex.moon);
-    this.hills = new TilingSprite({ texture: this.backs.forest.far, width: 480, height: 110 });
-    this.trees = new TilingSprite({ texture: this.backs.forest.near, width: 400, height: 130 });
+    this.hills = new TilingSprite({ texture: forest.far, width: 480, height: 110 });
+    this.trees = new TilingSprite({ texture: forest.near, width: 400, height: 130 });
     this.bg.addChild(this.sky, this.moon, this.hills, this.trees);
 
     this.lightLayer.blendMode = 'erase';
@@ -157,11 +167,25 @@ export class Renderer {
     this.tex.lightTile = art.lightTile();
     this.tex.moth = [0, 1].map((f) => art.moth(f));
     this.tex.sparkBall = art.spark();
-    this.tex.water = [0, 1].map((f) => art.water(f));
     this.tex.crumble = art.crumble();
     this.tex.moon = art.moon();
-    for (const world of ['forest', 'caves'] as const)
-      this.backs[world] = { sky: art.sky(world), far: art.far(world), near: art.near(world) };
+    this.tex.bounce = [art.bounce(false), art.bounce(true)];
+    this.tex.icicle = art.icicle();
+    this.tex.mover = art.mover();
+  }
+
+  private back(world: World): { sky: Texture; far: Texture; near: Texture; water: Texture[] } {
+    let back = this.backs.get(world);
+    if (!back) {
+      back = {
+        sky: art.sky(world),
+        far: art.far(world),
+        near: art.near(world),
+        water: [0, 1].map((f) => art.water(f, world)),
+      };
+      this.backs.set(world, back);
+    }
+    return back;
   }
 
   /** Polohy sú plynulé (vektory netreba prichytávať na pixely). */
@@ -187,12 +211,15 @@ export class Renderer {
     this.glowPool = [];
     this.particles = [];
 
-    const back = this.backs[level.world];
+    const back = this.back(level.world);
+    const info = art.info(level.world);
     this.sky.texture = back.sky;
     this.hills.texture = back.far;
     this.trees.texture = back.near;
-    this.moon.visible = level.world === 'forest';
-    this.darkness = art.darkness(level.world);
+    this.tex.water = back.water;
+    this.moon.visible = info.moon;
+    this.darkness = info.darkness;
+    this.ambient = info.ambient;
 
     this.level.addChild(art.terrain(level));
     this.waterSprites = [];
@@ -211,6 +238,22 @@ export class Renderer {
       sprite.position.set(c.col * TILE, c.row * TILE);
       this.level.addChild(sprite);
       return { sprite, col: c.col, row: c.row };
+    });
+    this.bounceSprites = [];
+    for (let row = 0; row < level.height; row++) {
+      for (let col = 0; col < level.width; col++) {
+        if (tileAt(level, col, row) !== Tile.Bounce) continue;
+        const sprite = new Sprite(this.tex.bounce[0]);
+        // Klobúk vytŕča nad povrch zeme.
+        sprite.position.set(col * TILE, row * TILE - 5);
+        this.level.addChild(sprite);
+        this.bounceSprites.push({ sprite, x: col * TILE + TILE / 2, y: row * TILE, squash: 0 });
+      }
+    }
+    this.moverSprites = game.movers.map(() => {
+      const sprite = new Sprite(this.tex.mover);
+      this.level.addChild(sprite);
+      return sprite;
     });
     this.lightTiles = [];
     for (let row = 0; row < level.height; row++) {
@@ -234,7 +277,7 @@ export class Renderer {
     this.lanternSprites = level.lanterns.map((l) => {
       const col = Math.floor(l.x / TILE);
       let row = Math.floor(l.y / TILE) + 1;
-      while (row < level.height && tileAt(level, col, row) !== Tile.Ground) row++;
+      while (row < level.height && !isGround(tileAt(level, col, row))) row++;
       const top = l.y + 4;
       const post = new Sprite(art.post(row * TILE - top));
       post.position.set(l.x - 2, top);
@@ -274,6 +317,12 @@ export class Renderer {
       this.actors.addChild(body);
       this.above.addChild(eyes);
       return { body, eyes };
+    });
+    this.icicleSprites = game.icicles.map(() => {
+      const sprite = new Sprite(this.tex.icicle);
+      sprite.anchor.set(0.5, 0);
+      this.actors.addChild(sprite);
+      return sprite;
     });
     this.mothSprites = game.moths.map(() => {
       const s = new Sprite(this.tex.moth[0]);
@@ -379,6 +428,32 @@ export class Renderer {
         case 'fizzle':
           this.burst(e.x, e.y, 6, C.flame, 35, true);
           break;
+        case 'bounce': {
+          const b = this.bounceSprites.reduce<(typeof this.bounceSprites)[number] | null>(
+            (best, cur) =>
+              !best ||
+              Math.abs(cur.x - e.x) + Math.abs(cur.y - e.y) <
+                Math.abs(best.x - e.x) + Math.abs(best.y - e.y)
+                ? cur
+                : best,
+            null,
+          );
+          if (b) b.squash = 0.18;
+          this.burst(e.x, e.y, 10, 0xe070ff, 50, true);
+          break;
+        }
+        case 'icicle':
+          this.burst(e.x, e.y, 4, 0xcfeeff, 15, true);
+          break;
+        case 'shatter':
+          this.shake = 1.5;
+          this.burst(e.x, e.y, 12, 0xcfeeff, 60, true);
+          break;
+        case 'shadeHit':
+          this.shake = 3;
+          this.burst(e.x, e.y, 14, C.shadeInner, 60, false);
+          this.burst(e.x, e.y, 8, 0xffb070, 50, true);
+          break;
         case 'crumble':
           for (let i = 0; i < 8; i++)
             this.spawn(
@@ -433,7 +508,7 @@ export class Renderer {
     sprite.anchor.set(0.5);
     sprite.position.set(x, y);
     (above ? this.particlesAbove : this.particlesBelow).addChild(sprite);
-    this.particles.push({ sprite, vx, vy, gravity, life, age: 0, fade: true });
+    this.particles.push({ sprite, vx, vy, gravity, life, age: 0, fade: true, alpha: 1 });
   }
 
   private burst(
@@ -603,6 +678,18 @@ export class Renderer {
     const waveFrame = Math.floor(t * 3);
     for (const w of this.waterSprites) w.sprite.texture = this.tex.water[(waveFrame + w.col) % 2]!;
 
+    for (const b of this.bounceSprites) {
+      b.squash = Math.max(0, b.squash - dt);
+      b.sprite.texture = this.tex.bounce[b.squash > 0 ? 1 : 0]!;
+    }
+    game.icicles.forEach((ic, i) => {
+      const s = this.icicleSprites[i]!;
+      s.visible = ic.state !== 'gone';
+      const jitter = ic.state === 'shake' ? Math.sin(t * 70) * 0.8 : 0;
+      s.position.set(ic.x + jitter, ic.y);
+    });
+    game.movers.forEach((m, i) => this.moverSprites[i]!.position.set(m.x, m.y));
+
     game.shades.forEach((s, i) => {
       const { body, eyes } = this.shadeSprites[i]!;
       body.visible = eyes.visible = s.alive;
@@ -610,9 +697,10 @@ export class Renderer {
       const f = Math.floor(t * 8 + i) % 3;
       body.texture = (s.burning ? this.tex.shadeBurn : this.tex.shade)[f]!;
       body.position.set(this.px(s.x), this.px(s.y));
-      body.scale.x = game.center.x < s.x ? -1 : 1;
+      const size = s.big ? 1.8 : 1;
+      body.scale.set((game.center.x < s.x ? -1 : 1) * size, size);
       eyes.position.copyFrom(body.position);
-      eyes.scale.x = body.scale.x;
+      eyes.scale.copyFrom(body.scale);
       // Oči v tme žmurkajú; pri výpade svietia naplno.
       const blink = Math.floor(t * 1.3 + i * 0.37) % 7 === 0 && (t * 1.3 + i * 0.37) % 1 < 0.15;
       eyes.alpha = blink ? 0 : s.state === 'lunge' ? 1 : 0.75;
@@ -633,26 +721,59 @@ export class Renderer {
       p.vy *= 1 - dt * 1.5;
       p.sprite.x += p.vx * dt;
       p.sprite.y += p.vy * dt;
-      if (p.fade) p.sprite.alpha = 1 - p.age / p.life;
+      if (p.fade) p.sprite.alpha = p.alpha * (1 - p.age / p.life);
       return true;
     });
-    // Drobné voľné svetielka vo vzduchu pre atmosféru.
-    if (Math.random() < dt * 3) {
+    this.spawnAmbient(dt);
+  }
+
+  /** Častice vo vzduchu podľa sveta: svetielka, bludičky, sneh, prach alebo žeravé iskry. */
+  private spawnAmbient(dt: number): void {
+    const kind = this.ambient;
+    const rate = { motes: 3, wisps: 2.5, snow: 28, dust: 2.5, embers: 7 }[kind];
+    let n = rate * dt;
+    while (n > 0) {
+      if (Math.random() >= n) break;
+      n -= 1;
       const x = this.cam.x + (Math.random() - 0.5) * this.viewW;
-      const y = this.cam.y + (Math.random() - 0.5) * this.viewH;
-      this.spawn(
-        this.tex.spark,
-        x,
-        y,
-        (Math.random() - 0.5) * 8,
-        -4 - Math.random() * 6,
-        0,
-        3,
-        true,
-      );
+      let y = this.cam.y + (Math.random() - 0.5) * this.viewH;
+      let vx = (Math.random() - 0.5) * 8;
+      let vy = -4 - Math.random() * 6;
+      let gravity = 0;
+      let life = 3;
+      let tint: number = C.firefly;
+      let alpha = 0.5;
+      let tex = this.tex.spark;
+      if (kind === 'wisps') {
+        tint = 0x9ad08a;
+        gravity = -4;
+        life = 4;
+        alpha = 0.6;
+      } else if (kind === 'snow') {
+        y = this.cam.y - this.viewH / 2 - 4;
+        vx = -4 - Math.random() * 6;
+        vy = 10 + Math.random() * 8;
+        gravity = 20;
+        life = 9;
+        tint = 0xffffff;
+        alpha = 0.75;
+        tex = this.tex.snow;
+      } else if (kind === 'dust') {
+        tint = 0xb0a0c8;
+        vy = (Math.random() - 0.5) * 4;
+        life = 5;
+        alpha = 0.35;
+      } else if (kind === 'embers') {
+        tint = 0xff7a4a;
+        vy = -10 - Math.random() * 10;
+        gravity = -15;
+        alpha = 0.7;
+      }
+      this.spawn(tex, x, y, vx, vy, gravity, life, true);
       const p = this.particles[this.particles.length - 1]!;
-      p.sprite.tint = C.firefly;
-      p.sprite.alpha = 0.5;
+      p.sprite.tint = tint;
+      p.sprite.alpha = p.alpha = alpha;
+      p.fade = kind !== 'snow';
     }
   }
 

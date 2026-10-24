@@ -64,7 +64,14 @@ function levelName(index: number): string {
   return hasKey(name) ? t(name) : name;
 }
 
-const WORLD_NAMES: Record<string, Key> = { forest: 'world1', caves: 'world2' };
+const WORLD_NAMES: Record<string, Key> = {
+  forest: 'world1',
+  caves: 'world2',
+  swamp: 'world3',
+  ice: 'world4',
+  tower: 'world5',
+  abyss: 'world6',
+};
 
 /** „Zatopené jaskyne 2/4“ — poradie levelu v rámci jeho sveta. */
 function levelLabel(index: number): string {
@@ -250,6 +257,12 @@ function formatTime(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/** Smrť vo vode podľa sveta: ľadová voda, bahno alebo temná hlbina. */
+function waterDeath(): Key {
+  const world = LEVELS[levelIndex]!.world;
+  return world === 'swamp' ? 'diedSwamp' : world === 'abyss' ? 'diedAbyss' : 'diedWater';
+}
+
 function finishLevel(g: Game): void {
   const def = LEVELS[levelIndex]!;
   writeSave(recordLevel(readSave(), levelIndex, def.id, g.fireflyCount, g.crystalCount));
@@ -309,8 +322,10 @@ function onEvents(events: GameEvent[]): void {
             : e.cause === 'fall'
               ? 'diedFall'
               : e.cause === 'water'
-                ? 'diedWater'
-                : 'diedDark',
+                ? waterDeath()
+                : e.cause === 'icicle'
+                  ? 'diedIcicle'
+                  : 'diedDark',
         ),
       );
     } else if (e.type === 'exit') {

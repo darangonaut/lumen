@@ -10,9 +10,10 @@ však pomaly dochádza.
 
 |                                                 |                                                               |
 | ----------------------------------------------- | ------------------------------------------------------------- |
-| ![Svetelný most](docs/screenshots/bridge.png)   | ![Rozžiarený lampáš spaľuje tieň](docs/screenshots/flare.png) |
-| ![Zatopené jaskyne](docs/screenshots/caves.png) | ![Úvodná obrazovka](docs/screenshots/title.png)               |
-| ![Mobil](docs/screenshots/mobile.png)           |                                                               |
+| ![Zatopené jaskyne](docs/screenshots/caves.png) | ![Močiare](docs/screenshots/swamp.png)                        |
+| ![Ľadové štíty](docs/screenshots/ice.png)       | ![Zabudnutá veža](docs/screenshots/tower.png)                 |
+| ![Srdce tmy](docs/screenshots/abyss.png)        | ![Rozžiarený lampáš spaľuje tieň](docs/screenshots/flare.png) |
+| ![Úvodná obrazovka](docs/screenshots/title.png) | ![Mobil](docs/screenshots/mobile.png)                         |
 
 ## Ako sa hrá
 
@@ -23,7 +24,18 @@ však pomaly dochádza.
 - **Tiene** krúžia na okraji svetla a čakajú, kým zaváhaš. Ich dotyk ukradne olej.
   Poraziť ich môžeš **skokom na hlavu**, **iskrou** (stojí trochu oleja) alebo rozžiarením.
 - **Mory** letia za svetlom a pijú olej z lampáša.
-- V **Zatopených jaskyniach** číha ľadová voda a popraskané kamene, ktoré sa pod tebou rozpadnú.
+
+**24 levelov v šiestich svetoch**, každý s vlastnou mechanikou:
+
+| Svet             | Čo ťa čaká                                      |
+| ---------------- | ----------------------------------------------- |
+| Hmlistý les      | svetelné plošiny, prvé tiene                    |
+| Zatopené jaskyne | ľadová voda, popraskané kamene, mory            |
+| Močiare          | svietiace huby, ktoré ťa vymrštia do výšky      |
+| Ľadové štíty     | šmykľavý ľad a cencúle, ktoré sa odlomia        |
+| Zabudnutá veža   | pohyblivé plošiny                               |
+| Srdce tmy        | veľké tiene, ktoré vydržia tri zásahy, a finále |
+
 - **Lampy** na stĺpoch sú checkpointy a doplnia olej. Pri nich si v bezpečí.
 - Na konci každého levelu zapáľ **vatru**. Kto hľadá, nájde aj skryté **kryštály**.
 

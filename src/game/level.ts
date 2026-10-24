@@ -8,6 +8,9 @@
  *   L  lampa (checkpoint)   E  vatra na konci
  *   s  tieň                 m  mora (pije olej)
  *   w  voda (smrteľná)      c  drobiaci sa kameň
+ *   i  ľad (šmykľavý)       b  skákacia huba (vymrští)
+ *   v  cencúľ (spadne)      S  veľký tieň (3 zásahy)
+ *   H  pohyblivá plošina ↔  V  pohyblivá plošina ↕ (2 políčka široká, 4 políčka dráha)
  *   1–9  tabuľa s radou
  */
 export const TILE = 16;
@@ -20,9 +23,20 @@ export enum Tile {
   Thorns,
   Water,
   Crumble,
+  Ice,
+  Bounce,
 }
 
-export type World = 'forest' | 'caves';
+export type World = 'forest' | 'caves' | 'swamp' | 'ice' | 'tower' | 'abyss';
+
+/** Pevná zem (aj ľad a huba): na nej sa stojí a cez ňu sa neprejde. */
+export function isGround(tile: Tile): boolean {
+  return tile === Tile.Ground || tile === Tile.Ice || tile === Tile.Bounce;
+}
+
+export interface MoverDef extends Point {
+  axis: 'h' | 'v';
+}
 
 export interface Point {
   x: number;
@@ -55,7 +69,10 @@ export interface Level {
   crystals: Point[];
   lanterns: Point[];
   shades: Point[];
+  bigShades: Point[];
   moths: Point[];
+  icicles: Point[];
+  movers: MoverDef[];
   signs: Sign[];
   exit: Point;
 }
@@ -67,6 +84,8 @@ const TILES: Record<string, Tile> = {
   '^': Tile.Thorns,
   w: Tile.Water,
   c: Tile.Crumble,
+  i: Tile.Ice,
+  b: Tile.Bounce,
 };
 
 /** Stred políčka v pixeloch. */
@@ -90,7 +109,10 @@ export function parseLevel(def: LevelDef): Level {
     crystals: [],
     lanterns: [],
     shades: [],
+    bigShades: [],
     moths: [],
+    icicles: [],
+    movers: [],
     signs: [],
     exit: { x: 0, y: 0 },
   };
@@ -113,6 +135,10 @@ export function parseLevel(def: LevelDef): Level {
       else if (ch === 'L') level.lanterns.push(c);
       else if (ch === 's') level.shades.push(c);
       else if (ch === 'm') level.moths.push(c);
+      else if (ch === 'S') level.bigShades.push(c);
+      else if (ch === 'v') level.icicles.push(c);
+      else if (ch === 'H' || ch === 'V')
+        level.movers.push({ x: x * TILE, y: y * TILE, axis: ch === 'H' ? 'h' : 'v' });
       else if (ch === 'E') {
         level.exit = c;
         hasExit = true;

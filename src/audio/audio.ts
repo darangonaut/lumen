@@ -175,6 +175,22 @@ export class Sound {
         case 'crumble':
           this.noise(0.4, 300, 0.12);
           break;
+        case 'bounce':
+          this.sweep(160, 640, 'sine', 0.12, 0.25);
+          break;
+        case 'icicle':
+          this.noise(0.25, 5000, 0.05, 'highpass');
+          break;
+        case 'shatter':
+          this.noise(0.3, 6000, 0.08, 'highpass');
+          [7, 9, 8].forEach((n, i) =>
+            this.tone(SCALE[n]! * 2, 'triangle', 0.04, 0.3, this.master!, i * 0.04),
+          );
+          break;
+        case 'shadeHit':
+          this.sweep(220, 80, 'square', 0.1, 0.2);
+          this.noise(0.25, 2000, 0.06, 'highpass');
+          break;
         case 'died':
           if (e.cause === 'water') this.noise(0.6, 900, 0.15, 'bandpass');
           this.sweep(440, 60, 'triangle', 0.14, 1);
