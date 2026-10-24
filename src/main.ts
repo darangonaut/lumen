@@ -175,6 +175,7 @@ async function startLevel(index: number): Promise<void> {
   sound.start();
   levelIndex = index;
   game = new Game(parseLevel(LEVELS[index]!));
+  sound.setWorld(LEVELS[index]!.world);
   renderer.setGame(game);
   paused = false;
   doneTimer = -1;

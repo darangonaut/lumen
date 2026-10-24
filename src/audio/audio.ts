@@ -1,16 +1,16 @@
 import type { GameEvent } from '@/game/game';
+import type { World } from '@/game/level';
+import { Music } from './music';
 
-/** Pentatonika (D dur) pre hracie strojčeky a zvonenie svetlušiek. */
-const SCALE = [293.66, 329.63, 369.99, 440, 493.88, 587.33, 659.25, 739.99, 880, 987.77];
-
-/** Syntetizované zvuky a tichá hudba (Web Audio, bez súborov). */
+/** Syntetizované zvuky a pomalá hudba (Web Audio, bez súborov). */
 export class Sound {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private musicBus: GainNode | null = null;
   private echo: DelayNode | null = null;
   private muted = false;
-  private musicTimer = 0;
+  private music: Music | null = null;
+  private world: World = 'forest';
   private chime = 0;
   private chimeTime = 0;
   private padNodes: AudioNode[] = [];
@@ -43,6 +43,8 @@ export class Sound {
     this.musicBus.connect(this.master);
     this.musicBus.connect(this.echo);
     this.startPad();
+    this.music = new Music(ctx, this.musicBus, this.echo);
+    this.music.setWorld(this.world);
   }
 
   suspend(): void {
@@ -63,23 +65,9 @@ export class Sound {
     return this.muted;
   }
 
-  /** Tichý pad a vietor v pozadí. */
+  /** Vietor v pozadí. */
   private startPad(): void {
     const ctx = this.ctx!;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.value = 700;
-    const gain = ctx.createGain();
-    gain.gain.value = 0.05;
-    filter.connect(gain).connect(this.musicBus!);
-    for (const f of [73.42, 110, 146.83, 147.6]) {
-      const o = ctx.createOscillator();
-      o.type = 'triangle';
-      o.frequency.value = f;
-      o.connect(filter);
-      o.start();
-      this.padNodes.push(o);
-    }
     // Vietor: filtrovaný šum s pomalým kolísaním.
     const noise = ctx.createBufferSource();
     noise.buffer = this.noiseBuffer(2);
@@ -114,17 +102,23 @@ export class Sound {
     this.windFilter.frequency.setTargetAtTime(500 + strength * 500, t, 0.2);
   }
 
-  /** Hrací strojček: náhodné tóny pentatoniky (volať každý snímok). */
+  /** Hudba podľa sveta (tónina, tempo). */
+  setWorld(world: World): void {
+    this.world = world;
+    this.music?.setWorld(world);
+  }
+
+  /** Volať každý snímok: hudba a napätie (0 = pokoj, 1 = nebezpečenstvo). */
   update(dt: number, tension: number): void {
     if (!this.ctx || this.ctx.state !== 'running') return;
-    this.musicTimer -= dt;
     this.chimeTime -= dt;
     if (this.chimeTime <= 0) this.chime = 0;
-    if (this.musicTimer > 0) return;
-    this.musicTimer = (tension > 0.5 ? 0.35 : 0.7) + Math.random() * 0.8;
-    const note = SCALE[Math.floor(Math.random() * 7)]!;
-    this.tone(note * (tension > 0.5 ? 0.5 : 1), 'sine', 0.06, 1.6, this.musicBus!);
-    if (Math.random() < 0.3) this.tone(note * 1.5, 'sine', 0.03, 1.2, this.musicBus!, 0.12);
+    this.music?.update(tension);
+  }
+
+  /** Tón pentatoniky v tónine sveta. */
+  private note(i: number): number {
+    return this.music?.chimeNote(i) ?? 293.66 * 2 ** (i / 5);
   }
 
   play(events: GameEvent[]): void {
@@ -139,7 +133,7 @@ export class Sound {
           break;
         case 'firefly': {
           // Stúpajúce zvonenie pri zbieraní za sebou.
-          const note = SCALE[Math.min(SCALE.length - 1, this.chime)]!;
+          const note = this.note(Math.min(9, this.chime));
           this.chime++;
           this.chimeTime = 1.2;
           this.tone(note * 2, 'sine', 0.12, 0.6, this.echo ?? this.master!);
@@ -148,13 +142,13 @@ export class Sound {
         }
         case 'crystal':
           [0, 2, 4, 7].forEach((n, i) =>
-            this.tone(SCALE[n]! * 2, 'triangle', 0.1, 0.8, this.master!, i * 0.08),
+            this.tone(this.note(n) * 2, 'triangle', 0.1, 0.8, this.master!, i * 0.08),
           );
           break;
         case 'lantern':
           this.noise(0.5, 1200, 0.12, 'bandpass');
           [0, 2, 4].forEach((n, i) =>
-            this.tone(SCALE[n]!, 'triangle', 0.09, 1.5, this.master!, 0.1 + i * 0.1),
+            this.tone(this.note(n), 'triangle', 0.09, 1.5, this.master!, 0.1 + i * 0.1),
           );
           break;
         case 'flare':
@@ -197,7 +191,7 @@ export class Sound {
         case 'shatter':
           this.noise(0.3, 6000, 0.08, 'highpass');
           [7, 9, 8].forEach((n, i) =>
-            this.tone(SCALE[n]! * 2, 'triangle', 0.04, 0.3, this.master!, i * 0.04),
+            this.tone(this.note(n) * 2, 'triangle', 0.04, 0.3, this.master!, i * 0.04),
           );
           break;
         case 'shadeHit':
@@ -216,11 +210,11 @@ export class Sound {
           this.thunder(0.35 + Math.random() * 0.6);
           break;
         case 'respawn':
-          this.tone(SCALE[0]!, 'sine', 0.08, 0.6);
+          this.tone(this.note(0), 'sine', 0.08, 0.6);
           break;
         case 'exit':
           [0, 2, 4, 5, 7, 9].forEach((n, i) =>
-            this.tone(SCALE[n]!, 'triangle', 0.1, 1.4, this.master!, i * 0.12),
+            this.tone(this.note(n), 'triangle', 0.1, 1.4, this.master!, i * 0.12),
           );
           this.noise(1.2, 800, 0.1, 'bandpass');
           break;
