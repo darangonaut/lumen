@@ -1,0 +1,675 @@
+import {
+  Application,
+  Container,
+  Graphics,
+  RenderTexture,
+  Sprite,
+  Texture,
+  TilingSprite,
+} from 'pixi.js';
+import {
+  FLARE_RADIUS,
+  LANTERN_RADIUS,
+  PLAYER_H,
+  PLAYER_W,
+  type Game,
+  type GameEvent,
+  type LightSource,
+} from '@/game/game';
+import { TILE, Tile, tileAt } from '@/game/level';
+import type { PixelCanvas } from './PixelCanvas';
+import {
+  C,
+  PLAYER_FRAMES,
+  decorOf,
+  dot,
+  drawCampfire,
+  drawCrystal,
+  drawFirefly,
+  drawFlame,
+  drawLantern,
+  drawLightTile,
+  drawMoon,
+  drawPlayer,
+  drawPost,
+  drawShade,
+  drawSign,
+  drawSilhouette,
+  drawSky,
+  drawTerrain,
+  lightCanvas,
+  type PlayerFrame,
+} from './sprites';
+
+function texture(pc: PixelCanvas): Texture {
+  const t = Texture.from(pc.toCanvas());
+  t.source.scaleMode = 'nearest';
+  return t;
+}
+
+interface Particle {
+  sprite: Sprite;
+  vx: number;
+  vy: number;
+  gravity: number;
+  life: number;
+  age: number;
+  fade: boolean;
+}
+
+const DARKNESS = 0.92;
+const WARM = 0xffa848;
+/** Svetelný prechod je mäkký: plné svetlo siaha zhruba po herný polomer. */
+const LIGHT_SCALE = 2.7;
+
+/** PixiJS zobrazenie: les, postavy, tma so svetlami, častice. */
+export class Renderer {
+  readonly app = new Application();
+  private bg = new Container();
+  private world = new Container();
+  private sky!: TilingSprite;
+  private moon!: Sprite;
+  private hills!: TilingSprite;
+  private trees!: TilingSprite;
+  private level = new Container();
+  private lightTiles: { sprite: Sprite; col: number; row: number }[] = [];
+  private actors = new Container();
+  private particlesBelow = new Container();
+  private darkSprite!: Sprite;
+  private dark!: RenderTexture;
+  private darkFill = new Graphics();
+  private lightRoot = new Container();
+  private lightLayer = new Container();
+  private lightPool: Sprite[] = [];
+  private above = new Container();
+  private glow = new Container();
+  private glowPool: Sprite[] = [];
+  private particlesAbove = new Container();
+  private particles: Particle[] = [];
+  private zoom = 4;
+  private viewW = 0;
+  private viewH = 0;
+  private cam = { x: 0, y: 0 };
+  private shake = 0;
+  private time = 0;
+  private runPhase = 0;
+  private game!: Game;
+
+  private tex = {
+    player: new Map<string, Texture>(),
+    shade: [] as Texture[],
+    shadeBurn: [] as Texture[],
+    eyes: Texture.EMPTY,
+    firefly: Texture.EMPTY,
+    crystal: Texture.EMPTY,
+    lantern: [Texture.EMPTY, Texture.EMPTY],
+    flame: [] as Texture[],
+    light: Texture.EMPTY,
+    lightTile: Texture.EMPTY,
+    spark: Texture.EMPTY,
+    wisp: Texture.EMPTY,
+    dust: Texture.EMPTY,
+  };
+  private player = new Sprite();
+  private shadeSprites: { body: Sprite; eyes: Sprite }[] = [];
+  private fireflySprites: Sprite[] = [];
+  private crystalSprites: Sprite[] = [];
+  private lanternSprites: Sprite[] = [];
+  private flames: Sprite[] = [];
+  private mushrooms: { x: number; y: number }[] = [];
+
+  async init(host: HTMLElement): Promise<void> {
+    await this.app.init({
+      resizeTo: host,
+      background: C.ink,
+      antialias: false,
+      roundPixels: true,
+      autoDensity: true,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+    });
+    host.appendChild(this.app.canvas);
+
+    for (const frame of PLAYER_FRAMES) this.tex.player.set(frame, texture(drawPlayer(frame)));
+    this.tex.player.set('breathe', texture(drawPlayer('idle', true)));
+    this.tex.shade = [0, 1, 2].map((f) => texture(drawShade(f)));
+    this.tex.shadeBurn = [0, 1, 2].map((f) => texture(drawShade(f, true)));
+    this.tex.eyes = texture(eyes());
+    this.tex.firefly = texture(drawFirefly());
+    this.tex.crystal = texture(drawCrystal());
+    this.tex.lantern = [texture(drawLantern(false)), texture(drawLantern(true))];
+    this.tex.flame = [0, 1, 2].map((v) => texture(drawFlame(v)));
+    this.tex.lightTile = texture(drawLightTile());
+    this.tex.spark = texture(dot(C.flameHot));
+    this.tex.wisp = texture(dot(C.shadeInner, 2, 2));
+    this.tex.dust = texture(dot(0x6a6080));
+    const light = Texture.from(lightCanvas(128));
+    light.source.scaleMode = 'linear';
+    this.tex.light = light;
+
+    // Pozadie: nebo, mesiac, kopce a stromy s paralaxou.
+    this.sky = new TilingSprite({ texture: texture(drawSky(320, 240)), width: 320, height: 240 });
+    this.moon = new Sprite(texture(drawMoon()));
+    this.hills = new TilingSprite({
+      texture: texture(drawSilhouette(480, 110, C.hill, 'hills', 1)),
+      width: 480,
+      height: 110,
+    });
+    this.trees = new TilingSprite({
+      texture: texture(drawSilhouette(400, 130, C.trees, 'trees', 2)),
+      width: 400,
+      height: 130,
+    });
+    this.bg.addChild(this.sky, this.moon, this.hills, this.trees);
+
+    this.lightLayer.blendMode = 'erase';
+    this.lightRoot.addChild(this.lightLayer);
+    this.glow.blendMode = 'add';
+    this.particlesAbove.blendMode = 'add';
+
+    this.app.stage.addChild(this.bg, this.world);
+    this.resize();
+    this.app.renderer.on('resize', () => this.resize());
+  }
+
+  /** Postaví scénu pre nový level. */
+  setGame(game: Game): void {
+    this.game = game;
+    const level = game.level;
+    for (const child of this.world.removeChildren()) child.destroy({ children: true });
+    this.level = new Container();
+    this.actors = new Container();
+    this.particlesBelow = new Container();
+    this.above = new Container();
+    this.glow = new Container();
+    this.glow.blendMode = 'add';
+    this.particlesAbove = new Container();
+    this.particlesAbove.blendMode = 'add';
+    this.glowPool = [];
+    this.particles = [];
+
+    this.level.addChild(new Sprite(texture(drawTerrain(level))));
+    this.lightTiles = [];
+    for (let row = 0; row < level.height; row++) {
+      for (let col = 0; col < level.width; col++) {
+        if (tileAt(level, col, row) !== Tile.Light) continue;
+        const sprite = new Sprite(this.tex.lightTile);
+        sprite.position.set(col * TILE, row * TILE);
+        sprite.alpha = 0;
+        this.level.addChild(sprite);
+        this.lightTiles.push({ sprite, col, row });
+      }
+    }
+    const signTex = texture(drawSign());
+    for (const s of level.signs) {
+      const sprite = new Sprite(signTex);
+      sprite.anchor.set(0.5, 1);
+      sprite.position.set(s.x, s.y + TILE / 2);
+      this.level.addChild(sprite);
+    }
+    // Lampy na stĺpoch až po zem.
+    this.lanternSprites = level.lanterns.map((l) => {
+      const col = Math.floor(l.x / TILE);
+      let row = Math.floor(l.y / TILE) + 1;
+      while (row < level.height && tileAt(level, col, row) !== Tile.Ground) row++;
+      const top = l.y + 4;
+      const post = new Sprite(texture(drawPost(row * TILE - top)));
+      post.position.set(l.x - 2, top);
+      const lantern = new Sprite(this.tex.lantern[0]);
+      lantern.anchor.set(0.5, 0.5);
+      lantern.position.set(l.x, l.y - 1);
+      this.level.addChild(post, lantern);
+      return lantern;
+    });
+    const fire = new Sprite(texture(drawCampfire()));
+    fire.anchor.set(0.5, 1);
+    fire.position.set(level.exit.x + 3, level.exit.y + TILE / 2);
+    this.level.addChild(fire);
+    this.mushrooms = decorOf(level)
+      .filter((d) => d.kind === 'mushroom')
+      .map((d) => ({ x: d.x, y: d.y - 3 }));
+
+    this.fireflySprites = game.fireflies.map((f) => {
+      const s = new Sprite(this.tex.firefly);
+      s.anchor.set(0.5);
+      s.position.set(f.x, f.y);
+      this.above.addChild(s);
+      return s;
+    });
+    this.crystalSprites = game.crystals.map((k) => {
+      const s = new Sprite(this.tex.crystal);
+      s.anchor.set(0.5);
+      s.position.set(k.x, k.y);
+      this.actors.addChild(s);
+      return s;
+    });
+    this.shadeSprites = game.shades.map(() => {
+      const body = new Sprite(this.tex.shade[0]);
+      body.anchor.set(0.5, 0.4);
+      const eyes = new Sprite(this.tex.eyes);
+      eyes.anchor.set(0.5, 0.4);
+      this.actors.addChild(body);
+      this.above.addChild(eyes);
+      return { body, eyes };
+    });
+    this.flames = [0, 1].map((i) => {
+      const s = new Sprite(this.tex.flame[i]);
+      s.anchor.set(0.5, 1);
+      s.position.set(level.exit.x + 2 + i * 3 - 1, level.exit.y + TILE / 2 - 3);
+      s.visible = false;
+      this.above.addChild(s);
+      return s;
+    });
+    this.player = new Sprite(this.tex.player.get('idle'));
+    this.player.anchor.set(0.5, 1);
+    this.actors.addChild(this.player);
+
+    if (!this.darkSprite) this.darkSprite = new Sprite();
+    this.world.addChild(
+      this.level,
+      this.particlesBelow,
+      this.actors,
+      this.darkSprite,
+      this.glow,
+      this.above,
+      this.particlesAbove,
+    );
+    this.resize();
+    const c = game.center;
+    this.cam = { x: c.x, y: c.y };
+    this.clampCamera();
+  }
+
+  private resize(): void {
+    const w = this.app.screen.width;
+    const h = this.app.screen.height;
+    // Celočíselné priblíženie (ostré pixely): ~11 políčok na výšku.
+    // Na nízkych obrazovkách (telefón na šírku) radšej neceločíselné, inak je všetko drobné.
+    this.zoom = h >= 600 ? Math.round(h / 175) : Math.max(2, h / 150);
+    this.world.scale.set(this.zoom);
+    this.bg.scale.set(this.zoom);
+    this.viewW = Math.ceil(w / this.zoom) + 2;
+    this.viewH = Math.ceil(h / this.zoom) + 2;
+    this.dark?.destroy(true);
+    this.dark = RenderTexture.create({ width: this.viewW, height: this.viewH, resolution: 0.5 });
+    this.dark.source.scaleMode = 'linear';
+    if (this.darkSprite) this.darkSprite.texture = this.dark;
+    this.sky.width = this.viewW;
+    this.sky.height = this.viewH;
+    this.hills.width = this.trees.width = this.viewW;
+  }
+
+  private clampCamera(): void {
+    const level = this.game.level;
+    const lw = level.width * TILE;
+    const lh = level.height * TILE;
+    this.cam.x = lw > this.viewW ? clamp(this.cam.x, this.viewW / 2, lw - this.viewW / 2) : lw / 2;
+    this.cam.y =
+      lh > this.viewH
+        ? clamp(this.cam.y, this.viewH / 2, lh - this.viewH / 2)
+        : lh - this.viewH / 2;
+  }
+
+  /** Udalosti hry → častice a otrasy. */
+  handle(events: GameEvent[]): void {
+    const c = this.game.center;
+    for (const e of events) {
+      switch (e.type) {
+        case 'firefly':
+          this.burst(e.x, e.y, 10, C.firefly, 50, true);
+          break;
+        case 'crystal':
+          this.burst(e.x, e.y, 18, C.crystal, 70, true);
+          break;
+        case 'lantern':
+          this.burst(e.x, e.y, 24, C.flame, 80, true);
+          break;
+        case 'flare':
+          this.ring(this.game.lamp.x, this.game.lamp.y);
+          break;
+        case 'hurt':
+          this.shake = 5;
+          this.burst(c.x, c.y, 10, C.flameRed, 70, true);
+          break;
+        case 'shadeDie':
+          this.burst(e.x, e.y, 16, C.shadeInner, 60, false);
+          this.burst(e.x, e.y, 10, 0xffb070, 50, true);
+          break;
+        case 'land':
+          for (const dir of [-1, 1])
+            this.spawn(
+              this.tex.dust,
+              c.x + dir * 3,
+              c.y + PLAYER_H / 2,
+              dir * 25,
+              -10,
+              0,
+              0.35,
+              false,
+            );
+          break;
+        case 'died':
+          this.shake = 3;
+          this.burst(c.x, c.y, 20, e.cause === 'dark' ? C.shadeInner : C.cloak, 60, false);
+          this.burst(c.x, c.y, 8, C.flame, 40, true);
+          break;
+        case 'exit':
+          this.burst(this.game.level.exit.x, this.game.level.exit.y, 30, C.flame, 90, true);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  private spawn(
+    tex: Texture,
+    x: number,
+    y: number,
+    vx: number,
+    vy: number,
+    gravity: number,
+    life: number,
+    above: boolean,
+  ): void {
+    const sprite = new Sprite(tex);
+    sprite.anchor.set(0.5);
+    sprite.position.set(x, y);
+    (above ? this.particlesAbove : this.particlesBelow).addChild(sprite);
+    this.particles.push({ sprite, vx, vy, gravity, life, age: 0, fade: true });
+  }
+
+  private burst(
+    x: number,
+    y: number,
+    n: number,
+    color: number,
+    speed: number,
+    light: boolean,
+  ): void {
+    const tex = light ? this.tex.spark : this.tex.wisp;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = speed * (0.3 + Math.random() * 0.7);
+      this.spawn(
+        tex,
+        x,
+        y,
+        Math.cos(a) * v,
+        Math.sin(a) * v - 20,
+        light ? 40 : -20,
+        0.5 + Math.random() * 0.5,
+        light,
+      );
+      const p = this.particles[this.particles.length - 1]!;
+      p.sprite.tint = color;
+    }
+  }
+
+  private ring(x: number, y: number): void {
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      this.spawn(this.tex.spark, x, y, Math.cos(a) * 140, Math.sin(a) * 140, 0, 0.4, true);
+      this.particles[this.particles.length - 1]!.sprite.tint = C.flame;
+    }
+  }
+
+  render(dt: number): void {
+    const game = this.game;
+    this.time += dt;
+    const lights = game.lights();
+    this.updateCamera(dt);
+    this.updateActors(dt, lights);
+    this.updateParticles(dt);
+    this.updateDarkness();
+  }
+
+  private updateCamera(dt: number): void {
+    const game = this.game;
+    const c = game.center;
+    const tx = c.x + game.player.facing * 22;
+    const ty = c.y - 12;
+    const k = 1 - Math.exp(-dt * 5);
+    this.cam.x += (tx - this.cam.x) * k;
+    this.cam.y += (ty - this.cam.y) * (1 - Math.exp(-dt * 3.5));
+    this.clampCamera();
+    this.shake = Math.max(0, this.shake - dt * 20);
+    const sx = (Math.random() - 0.5) * this.shake;
+    const sy = (Math.random() - 0.5) * this.shake;
+    const w = this.app.screen.width;
+    const h = this.app.screen.height;
+    this.world.position.set(
+      Math.round(w / 2 - (this.cam.x + sx) * this.zoom),
+      Math.round(h / 2 - (this.cam.y + sy) * this.zoom),
+    );
+
+    // Paralaxa pozadia.
+    const lh = game.level.height * TILE;
+    const bottom = this.cam.y + this.viewH / 2;
+    const lift = (lh - bottom) * 0.25;
+    this.sky.tilePosition.set(-this.cam.x * 0.02, 0);
+    this.moon.position.set(this.viewW * 0.72, 18 + lift * 0.2);
+    this.hills.tilePosition.x = -this.cam.x * 0.12;
+    this.hills.y = this.viewH - 110 + lift * 0.6;
+    this.trees.tilePosition.x = -this.cam.x * 0.3;
+    this.trees.y = this.viewH - 118 + lift;
+  }
+
+  private updateActors(dt: number, lights: LightSource[]): void {
+    const game = this.game;
+    const p = game.player;
+    const t = this.time;
+
+    // Hráč.
+    let frame: PlayerFrame | 'breathe' = 'idle';
+    if (!p.onGround) frame = p.vy < 0 ? 'jump' : 'fall';
+    else if (Math.abs(p.vx) > 10) {
+      this.runPhase += (Math.abs(p.vx) * dt) / 7;
+      frame = (['run0', 'run1', 'run2', 'run3'] as const)[Math.floor(this.runPhase) % 4]!;
+    } else if (Math.floor(t / 0.7) % 2 === 1) frame = 'breathe';
+    this.player.texture = this.tex.player.get(frame)!;
+    this.player.scale.x = p.facing;
+    this.player.position.set(
+      Math.round(p.x + PLAYER_W / 2 + p.facing * 1),
+      Math.round(p.y + PLAYER_H + 1),
+    );
+    this.player.visible =
+      game.state !== 'dead' && !(p.invulnerable > 0 && Math.floor(t * 12) % 2 === 0);
+
+    // Svetelné plošiny sa plynule zjavia a zmiznú.
+    for (const lt of this.lightTiles) {
+      const lit = game.isTileLit(lt.col, lt.row, lights);
+      const target = lit ? 1 : 0.04;
+      lt.sprite.alpha += (target - lt.sprite.alpha) * Math.min(1, dt * 12);
+    }
+
+    game.fireflies.forEach((f, i) => {
+      const s = this.fireflySprites[i]!;
+      s.visible = !f.taken;
+      s.position.set(f.x + Math.sin(t * 1.7 + i) * 2, f.y + Math.sin(t * 2.3 + i * 1.7) * 2.5);
+      s.alpha = 0.7 + Math.sin(t * 6 + i * 2) * 0.3;
+    });
+    game.crystals.forEach((k, i) => {
+      const s = this.crystalSprites[i]!;
+      s.visible = !k.taken;
+      s.y = k.y + Math.round(Math.sin(t * 2 + i) * 1.5);
+    });
+    game.lanterns.forEach((l, i) => {
+      this.lanternSprites[i]!.texture = this.tex.lantern[l.lit ? 1 : 0]!;
+    });
+    this.flames.forEach((f, i) => {
+      f.visible = game.exitLit;
+      f.texture = this.tex.flame[(Math.floor(t * 10) + i) % 3]!;
+    });
+
+    game.shades.forEach((s, i) => {
+      const { body, eyes } = this.shadeSprites[i]!;
+      body.visible = eyes.visible = s.alive;
+      if (!s.alive) return;
+      const f = Math.floor(t * 8 + i) % 3;
+      body.texture = (s.burning ? this.tex.shadeBurn : this.tex.shade)[f]!;
+      body.position.set(Math.round(s.x), Math.round(s.y));
+      body.scale.x = game.center.x < s.x ? -1 : 1;
+      eyes.position.copyFrom(body.position);
+      eyes.scale.x = body.scale.x;
+      // Oči v tme žmurkajú; pri výpade svietia naplno.
+      const blink = Math.floor(t * 1.3 + i * 0.37) % 7 === 0 && (t * 1.3 + i * 0.37) % 1 < 0.15;
+      eyes.alpha = blink ? 0 : s.state === 'lunge' ? 1 : 0.75;
+      eyes.tint = s.state === 'lunge' ? 0xff7a8a : 0xffffff;
+      body.alpha = s.active ? 1 : 0.8;
+    });
+  }
+
+  private updateParticles(dt: number): void {
+    this.particles = this.particles.filter((p) => {
+      p.age += dt;
+      if (p.age >= p.life) {
+        p.sprite.destroy();
+        return false;
+      }
+      p.vy += p.gravity * dt;
+      p.vx *= 1 - dt * 2;
+      p.vy *= 1 - dt * 1.5;
+      p.sprite.x += p.vx * dt;
+      p.sprite.y += p.vy * dt;
+      if (p.fade) p.sprite.alpha = 1 - p.age / p.life;
+      return true;
+    });
+    // Drobné voľné svetielka vo vzduchu pre atmosféru.
+    if (Math.random() < dt * 3) {
+      const x = this.cam.x + (Math.random() - 0.5) * this.viewW;
+      const y = this.cam.y + (Math.random() - 0.5) * this.viewH;
+      this.spawn(
+        this.tex.spark,
+        x,
+        y,
+        (Math.random() - 0.5) * 8,
+        -4 - Math.random() * 6,
+        0,
+        3,
+        true,
+      );
+      const p = this.particles[this.particles.length - 1]!;
+      p.sprite.tint = C.firefly;
+      p.sprite.alpha = 0.5;
+    }
+  }
+
+  private updateDarkness(): void {
+    const game = this.game;
+    const vx = this.cam.x - this.viewW / 2;
+    const vy = this.cam.y - this.viewH / 2;
+    this.darkSprite.position.set(vx, vy);
+    this.darkSprite.width = this.viewW;
+    this.darkSprite.height = this.viewH;
+    this.darkFill
+      .clear()
+      .rect(0, 0, this.viewW, this.viewH)
+      .fill({ color: 0x04030a, alpha: DARKNESS });
+    this.app.renderer.render({ container: this.darkFill, target: this.dark, clear: true });
+
+    let used = 0;
+    let glowUsed = 0;
+    const t = this.time;
+    const inView = (x: number, y: number, r: number) =>
+      x + r > vx && x - r < vx + this.viewW && y + r > vy && y - r < vy + this.viewH;
+    const light = (x: number, y: number, radius: number, alpha = 1) => {
+      if (!inView(x, y, radius)) return;
+      let s = this.lightPool[used];
+      if (!s) {
+        s = new Sprite(this.tex.light);
+        s.anchor.set(0.5);
+        this.lightPool.push(s);
+        this.lightLayer.addChild(s);
+      }
+      s.visible = true;
+      s.position.set(x - vx, y - vy);
+      s.width = s.height = radius * LIGHT_SCALE;
+      s.alpha = alpha;
+      used++;
+    };
+    const glow = (x: number, y: number, radius: number, color: number, alpha: number) => {
+      if (!inView(x, y, radius)) return;
+      let s = this.glowPool[glowUsed];
+      if (!s) {
+        s = new Sprite(this.tex.light);
+        s.anchor.set(0.5);
+        this.glowPool.push(s);
+        this.glow.addChild(s);
+      }
+      s.visible = true;
+      s.position.set(x, y);
+      s.width = s.height = radius * 2;
+      s.tint = color;
+      s.alpha = alpha;
+      glowUsed++;
+    };
+
+    const flicker = 1 + Math.sin(t * 13) * 0.025 + Math.sin(t * 7.3) * 0.02;
+    if (game.state !== 'dead') {
+      const lamp = game.lamp;
+      light(lamp.x, lamp.y, game.radius * flicker);
+      const strength = Math.min(1, game.radius / FLARE_RADIUS);
+      glow(lamp.x, lamp.y, game.radius * 1.1, WARM, 0.08 + strength * 0.14);
+    }
+    for (const l of game.lanterns) {
+      if (!l.lit) continue;
+      light(l.x, l.y, LANTERN_RADIUS * flicker);
+      glow(l.x, l.y, LANTERN_RADIUS, WARM, 0.14);
+    }
+    const exit = game.level.exit;
+    if (game.exitLit) {
+      light(exit.x, exit.y, LANTERN_RADIUS * 1.6 * flicker);
+      glow(exit.x, exit.y, LANTERN_RADIUS * 1.5, WARM, 0.25);
+    } else {
+      // Pahreba: ukazuje cieľ z diaľky.
+      light(exit.x, exit.y + 4, 18 * flicker, 0.8);
+      glow(exit.x, exit.y + 4, 22, C.flameRed, 0.35);
+    }
+    for (const lt of this.lightTiles) {
+      if (lt.sprite.alpha < 0.5) continue;
+      light(lt.col * TILE + 8, lt.row * TILE + 3, 14, 0.5);
+    }
+    game.fireflies.forEach((f, i) => {
+      if (f.taken) return;
+      const s = this.fireflySprites[i]!;
+      light(s.x, s.y, 9, 0.45);
+      glow(s.x, s.y, 10, C.firefly, 0.4 * s.alpha);
+    });
+    game.crystals.forEach((k, i) => {
+      if (k.taken) return;
+      const s = this.crystalSprites[i]!;
+      light(s.x, s.y, 12, 0.6);
+      glow(s.x, s.y, 14, C.crystal, 0.3);
+    });
+    for (const m of this.mushrooms) {
+      light(m.x, m.y, 9, 0.5);
+      glow(m.x, m.y, 8, C.mushroom, 0.25);
+    }
+    // Mesiac presvitá tmou (terén pred ním ostane siluetou).
+    light(vx + this.moon.x + 13, vy + this.moon.y + 13, 22, 0.9);
+    for (let i = used; i < this.lightPool.length; i++) this.lightPool[i]!.visible = false;
+    for (let i = glowUsed; i < this.glowPool.length; i++) this.glowPool[i]!.visible = false;
+    this.app.renderer.render({ container: this.lightRoot, target: this.dark, clear: false });
+  }
+
+  /** Obrazovkové súradnice → svet (pre ladenie). */
+  get camera(): { x: number; y: number; zoom: number } {
+    return { ...this.cam, zoom: this.zoom };
+  }
+}
+
+function eyes(): PixelCanvas {
+  const pc = drawShade(0);
+  // Len oči: ostatné pixely zmaž.
+  for (let y = 0; y < pc.height; y++) {
+    for (let x = 0; x < pc.width; x++) {
+      const c = pc.get(x, y);
+      if (c !== C.shadeEye) pc.set(x, y, 0, 0);
+    }
+  }
+  return pc;
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
