@@ -1,67 +1,82 @@
 # Lumen
 
-Siluetová plošinovka do prehliadača o malej postavičke s lampášom vo svete, ktorý zhasol.
-Svetlo je všetko: ukazuje cestu, odháňa tiene a zhmotňuje svetelné plošiny. Olej v lampáši
-však pomaly dochádza.
+A silhouette platformer for the browser about a little girl with a lantern in a world that has gone dark.
+Light is everything: it shows the way, keeps the shades at bay and makes bridges of light solid.
+But the oil in the lantern is slowly running out.
 
-**▶ Hraj online: https://darangonaut.github.io/lumen/**
+**▶ Play online: https://darangonaut.github.io/lumen/**
 
-![Hmlistý les](docs/screenshots/forest.png)
+![Lumen title screen](docs/screenshots/title.png)
 
-|                                                 |                                                               |
-| ----------------------------------------------- | ------------------------------------------------------------- |
-| ![Zatopené jaskyne](docs/screenshots/caves.png) | ![Močiare](docs/screenshots/swamp.png)                        |
-| ![Ľadové štíty](docs/screenshots/ice.png)       | ![Zabudnutá veža](docs/screenshots/tower.png)                 |
-| ![Srdce tmy](docs/screenshots/abyss.png)        | ![Rozžiarený lampáš spaľuje tieň](docs/screenshots/flare.png) |
-| ![Úvodná obrazovka](docs/screenshots/title.png) | ![Mobil](docs/screenshots/mobile.png)                         |
+## Seven worlds
 
-## Ako sa hrá
+24 levels in six worlds, each with its own mechanic, plus a bonus seventh world unlocked after the finale.
 
-- **Olej** v lampáši sa pomaly míňa. Dopĺňajú ho **svetlušky**. Keď dôjde, tma ťa pohltí.
-- **Svetelné plošiny** existujú len vo svetle. Kam nedosvietiš, tam nestúpiš.
-- **Rozžiarenie** (Shift / X / ✦) zväčší svetlo, ukáže vzdialené plošiny a spáli tiene,
-  ale míňa veľa oleja.
-- **Tiene** krúžia na okraji svetla a čakajú, kým zaváhaš. Ich dotyk ukradne olej.
-  Poraziť ich môžeš **skokom na hlavu**, **iskrou** (stojí trochu oleja) alebo rozžiarením.
-- **Mory** letia za svetlom a pijú olej z lampáša.
+| World                 | What awaits you                                   |
+| --------------------- | ------------------------------------------------- |
+| Misty Forest          | bridges of light, the first shades                |
+| Flooded Caves         | icy water, crumbling stones, moths                |
+| Marshes               | glowing mushrooms that launch you high            |
+| Frozen Peaks          | slippery ice and icicles that break off           |
+| Forgotten Tower       | moving platforms, chained with timed jumps        |
+| Heart of Darkness     | great shades that take three hits, and the finale |
+| Stormy Peak _(bonus)_ | wind gusts, shelter behind rocks, lightning       |
 
-**24 levelov v šiestich svetoch**, každý s vlastnou mechanikou, a po dohraní **bonusový siedmy svet**:
+|     ![Misty Forest](docs/screenshots/forest.png)      |      ![Flooded Caves](docs/screenshots/caves.png)      |
+| :---------------------------------------------------: | :----------------------------------------------------: |
+|         Misty Forest — a lamp is a checkpoint         | Flooded Caves — a shade waits at the edge of the light |
+|        ![Marshes](docs/screenshots/swamp.png)         |       ![Frozen Peaks](docs/screenshots/ice.png)        |
+|   Marshes — reeds, dead trees and will-o'-the-wisps   |     Frozen Peaks — icicles hang over slippery ice      |
+|    ![Forgotten Tower](docs/screenshots/tower.png)     |    ![Heart of Darkness](docs/screenshots/abyss.png)    |
+| Forgotten Tower — arches, chains and moving platforms |     Heart of Darkness — the last and darkest world     |
+|      ![Stormy Peak](docs/screenshots/storm.png)       |   ![Flaring the lantern](docs/screenshots/flare.png)   |
+|        Stormy Peak — rain, gusts and lightning        |       Flaring the lantern burns the shades away        |
 
-| Svet                 | Čo ťa čaká                                      |
-| -------------------- | ----------------------------------------------- |
-| Hmlistý les          | svetelné plošiny, prvé tiene                    |
-| Zatopené jaskyne     | ľadová voda, popraskané kamene, mory            |
-| Močiare              | svietiace huby, ktoré ťa vymrštia do výšky      |
-| Ľadové štíty         | šmykľavý ľad a cencúle, ktoré sa odlomia        |
-| Zabudnutá veža       | pohyblivé plošiny                               |
-| Srdce tmy            | veľké tiene, ktoré vydržia tri zásahy, a finále |
-| Búrlivý vrch (bonus) | vietor v nárazoch, závetrie za skalami, blesky  |
+## How to play
 
-- **Lampy** na stĺpoch sú checkpointy a doplnia olej. Pri nich si v bezpečí.
-- Na konci každého levelu zapáľ **vatru**. Kto hľadá, nájde aj skryté **kryštály**.
+- **Oil** in your lantern slowly burns away. **Fireflies** refill it. When it runs out, the darkness takes you.
+- **Bridges of light** only exist in the light. Where your lantern doesn't reach, you can't step.
+- **Flaring** the lantern makes the light bigger, reveals distant platforms and burns shades — but it uses a lot of oil.
+- **Shades** circle at the edge of the light and wait for you to falter. Their touch steals oil.
+  Defeat them by **jumping on their heads**, throwing a **spark** (costs a little oil) or flaring the lantern.
+- **Moths** chase the light and drink oil from your lantern.
+- **Lamps** on posts are checkpoints and refill your oil. Next to a lit lamp you are safe from shades.
+- Light the **campfire** at the end of every level. Those who look around will find hidden **crystals**.
+- On Stormy Peak the **wind** blows in gusts: it pushes you in mid-air, but it can't move you while you stand still.
+  Wait behind a rock, and jump when the wind dies down.
 
-## Ovládanie
+## Controls
 
-| Akcia                   | Klávesnica        | Dotyk |
-| ----------------------- | ----------------- | ----- |
-| Chôdza                  | ← → / A D         | ◀ ▶   |
-| Skok (podržaním vyššie) | Medzerník / ↑ / W | ⤒     |
-| Zoskočiť z lávky        | ↓ / S             |       |
-| Hodiť iskru             | C / F             | ✸     |
-| Rozžiariť lampáš        | Shift / X         | ✦     |
-| Pauza                   | Esc / P           | ❚❚    |
+| Action                     | Keyboard      | Touch |
+| -------------------------- | ------------- | ----- |
+| Walk                       | ← → / A D     | ◀ ▶   |
+| Jump (hold to jump higher) | Space / ↑ / W | ⤒     |
+| Drop through a ledge       | ↓ / S         |       |
+| Throw a spark              | C / F         | ✸     |
+| Flare the lantern          | Shift / X     | ✦     |
+| Pause                      | Esc / P       | ❚❚    |
 
-## Vývoj
+The game is available in **English**, **Slovak** and **Czech**, and works on phones held sideways.
 
-TypeScript, Vite a PixiJS 8. Grafika je vektorová v siluetovom štýle (`src/render/vector.ts`): čierne popredie, žiariace pozadie, farbu má len svetlo. Všetka grafika aj zvuk sa generujú v kóde (žiadne obrázky ani
-zvukové súbory). Herná logika v `src/game/` je čistý TypeScript bez PixiJS a DOM. Levely sú
-ASCII mapy v `src/game/levels.ts` (2 svety po 4 leveloch: Hmlistý les a Zatopené jaskyne) a testy overujú, že sa dajú prejsť.
+<p align="center"><img src="docs/screenshots/mobile.png" alt="Lumen on a phone with touch controls" width="640"></p>
+
+## Development
+
+Built with TypeScript, Vite and PixiJS 8. All graphics are vector silhouettes drawn in code
+(`src/render/vector.ts`): a black foreground against a glowing sky, where only light has colour.
+Sound is synthesized with the Web Audio API — the game has no image or audio files.
+
+- `src/game/` — pure game logic in TypeScript, with no PixiJS or DOM (enforced by ESLint).
+- `src/game/levels.ts` — levels as ASCII maps; the legend is in `src/game/level.ts`.
+- `src/render/` — rendering: terrain, darkness with light cut-outs, parallax backgrounds, particles.
+- `src/ui/` — title scene and translations (`i18n.ts`).
+- `tests/` — logic tests and a bot that plays every level to prove it can be completed.
 
 ```bash
 npm install
-npm run dev          # vývojový server
-npm test             # testy logiky a prejazdnosti levelov
-npm run deploy:pages # nasadenie na GitHub Pages
+npm run dev          # development server
+npm test             # logic tests and level completion bot
+npm run deploy:pages # deploy to GitHub Pages
 ```
 
-Ladenie: `?debug&level=N` spustí rovno level N.
+Debugging: `?debug&level=N` starts directly at level N (1–28).
