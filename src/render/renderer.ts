@@ -18,40 +18,9 @@ import {
   type LightSource,
 } from '@/game/game';
 import { TILE, Tile, tileAt } from '@/game/level';
-import type { PixelCanvas } from './PixelCanvas';
-import {
-  C,
-  PLAYER_FRAMES,
-  decorOf,
-  dot,
-  drawCampfire,
-  drawCaveBack,
-  drawCrumble,
-  drawMoth,
-  drawSpark,
-  drawWaterSurface,
-  drawCrystal,
-  drawFirefly,
-  drawFlame,
-  drawLantern,
-  drawLightTile,
-  drawMoon,
-  drawPlayer,
-  drawPost,
-  drawShade,
-  drawSign,
-  drawSilhouette,
-  drawSky,
-  drawTerrain,
-  lightCanvas,
-  type PlayerFrame,
-} from './sprites';
-
-function texture(pc: PixelCanvas): Texture {
-  const t = Texture.from(pc.toCanvas());
-  t.source.scaleMode = 'nearest';
-  return t;
-}
+import { pixelArt, pixelTexture, type Art, type ArtStyle } from './art';
+import { C, PLAYER_FRAMES, decorOf, dot, lightCanvas, type PlayerFrame } from './sprites';
+import { vectorArt } from './vector';
 
 interface Particle {
   sprite: Sprite;
@@ -63,7 +32,6 @@ interface Particle {
   fade: boolean;
 }
 
-const DARKNESS = 0.92;
 const WARM = 0xffa848;
 /** Svetelný prechod je mäkký: plné svetlo siaha zhruba po herný polomer. */
 const LIGHT_SCALE = 2.7;
@@ -120,13 +88,15 @@ export class Renderer {
     sparkBall: Texture.EMPTY,
     water: [] as Texture[],
     crumble: Texture.EMPTY,
+    moon: Texture.EMPTY,
   };
   /** Pozadia svetov: nebo/jaskyňa, vzdialené a bližšie siluety. */
   private backs = {
     forest: { sky: Texture.EMPTY, far: Texture.EMPTY, near: Texture.EMPTY },
     caves: { sky: Texture.EMPTY, far: Texture.EMPTY, near: Texture.EMPTY },
   };
-  private darkness = DARKNESS;
+  private darkness = 0.92;
+  private art: Art = pixelArt;
   private mothSprites: Sprite[] = [];
   private sparkSprites: Sprite[] = [];
   private crumbleSprites: { sprite: Sprite; col: number; row: number }[] = [];
@@ -139,52 +109,31 @@ export class Renderer {
   private flames: Sprite[] = [];
   private mushrooms: { x: number; y: number }[] = [];
 
-  async init(host: HTMLElement): Promise<void> {
+  async init(host: HTMLElement, style: ArtStyle): Promise<void> {
     await this.app.init({
       resizeTo: host,
       background: C.ink,
-      antialias: false,
+      // Vyhladzovanie potrebujú vektory; pixel art má textúry bez filtrovania, nevadí mu.
+      antialias: true,
       roundPixels: true,
       autoDensity: true,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
     });
     host.appendChild(this.app.canvas);
 
-    for (const frame of PLAYER_FRAMES) this.tex.player.set(frame, texture(drawPlayer(frame)));
-    this.tex.player.set('breathe', texture(drawPlayer('idle', true)));
-    this.tex.shade = [0, 1, 2].map((f) => texture(drawShade(f)));
-    this.tex.shadeBurn = [0, 1, 2].map((f) => texture(drawShade(f, true)));
-    this.tex.eyes = texture(eyes());
-    this.tex.firefly = texture(drawFirefly());
-    this.tex.crystal = texture(drawCrystal());
-    this.tex.lantern = [texture(drawLantern(false)), texture(drawLantern(true))];
-    this.tex.flame = [0, 1, 2].map((v) => texture(drawFlame(v)));
-    this.tex.lightTile = texture(drawLightTile());
-    this.tex.spark = texture(dot(C.flameHot));
-    this.tex.wisp = texture(dot(C.shadeInner, 2, 2));
-    this.tex.dust = texture(dot(0x6a6080));
-    this.tex.stone = texture(dot(0x5a5a74, 2, 2));
-    this.tex.moth = [0, 1].map((f) => texture(drawMoth(f)));
-    this.tex.sparkBall = texture(drawSpark());
-    this.tex.water = [0, 1].map((f) => texture(drawWaterSurface(f)));
-    this.tex.crumble = texture(drawCrumble());
     const light = Texture.from(lightCanvas(128));
     light.source.scaleMode = 'linear';
     this.tex.light = light;
+    this.tex.spark = pixelTexture(dot(C.flameHot));
+    this.tex.wisp = pixelTexture(dot(C.shadeInner, 2, 2));
+    this.tex.dust = pixelTexture(dot(0x6a6080));
+    this.tex.stone = pixelTexture(dot(0x5a5a74, 2, 2));
+    this.art = style === 'vector' ? vectorArt : pixelArt;
+    this.buildTextures();
 
     // Pozadie: nebo, mesiac, kopce a stromy s paralaxou.
-    this.backs.forest = {
-      sky: texture(drawSky(320, 240)),
-      far: texture(drawSilhouette(480, 110, C.hill, 'hills', 1)),
-      near: texture(drawSilhouette(400, 130, C.trees, 'trees', 2)),
-    };
-    this.backs.caves = {
-      sky: texture(drawCaveBack(320, 240)),
-      far: texture(drawSilhouette(480, 110, 0x111522, 'hills', 3)),
-      near: texture(drawSilhouette(400, 130, 0x0b0e1a, 'spikes', 4)),
-    };
     this.sky = new TilingSprite({ texture: this.backs.forest.sky, width: 320, height: 240 });
-    this.moon = new Sprite(texture(drawMoon()));
+    this.moon = new Sprite(this.tex.moon);
     this.hills = new TilingSprite({ texture: this.backs.forest.far, width: 480, height: 110 });
     this.trees = new TilingSprite({ texture: this.backs.forest.near, width: 400, height: 130 });
     this.bg.addChild(this.sky, this.moon, this.hills, this.trees);
@@ -197,6 +146,45 @@ export class Renderer {
     this.app.stage.addChild(this.bg, this.world);
     this.resize();
     this.app.renderer.on('resize', () => this.resize());
+  }
+
+  get style(): ArtStyle {
+    return this.art.style;
+  }
+
+  /** Prepne štýl grafiky; rozohraný level sa len prekreslí (stav hry ostáva). */
+  setStyle(style: ArtStyle): void {
+    if (style === this.art.style) return;
+    this.art = style === 'vector' ? vectorArt : pixelArt;
+    this.buildTextures();
+    this.moon.texture = this.tex.moon;
+    if (this.game) this.setGame(this.game);
+  }
+
+  private buildTextures(): void {
+    const art = this.art;
+    for (const frame of PLAYER_FRAMES) this.tex.player.set(frame, art.player(frame));
+    this.tex.player.set('breathe', art.player('breathe'));
+    this.tex.shade = [0, 1, 2].map((f) => art.shade(f, false));
+    this.tex.shadeBurn = [0, 1, 2].map((f) => art.shade(f, true));
+    this.tex.eyes = art.eyes();
+    this.tex.firefly = art.firefly();
+    this.tex.crystal = art.crystal();
+    this.tex.lantern = [art.lantern(false), art.lantern(true)];
+    this.tex.flame = [0, 1, 2].map((v) => art.flame(v));
+    this.tex.lightTile = art.lightTile();
+    this.tex.moth = [0, 1].map((f) => art.moth(f));
+    this.tex.sparkBall = art.spark();
+    this.tex.water = [0, 1].map((f) => art.water(f));
+    this.tex.crumble = art.crumble();
+    this.tex.moon = art.moon();
+    for (const world of ['forest', 'caves'] as const)
+      this.backs[world] = { sky: art.sky(world), far: art.far(world), near: art.near(world) };
+  }
+
+  /** Zaokrúhlenie polohy: pixel art na celé pixely, vektory plynulo. */
+  private px(v: number): number {
+    return this.art.snap ? Math.round(v) : v;
   }
 
   /** Postaví scénu pre nový level. */
@@ -222,9 +210,9 @@ export class Renderer {
     this.hills.texture = back.far;
     this.trees.texture = back.near;
     this.moon.visible = level.world === 'forest';
-    this.darkness = level.world === 'caves' ? 0.95 : DARKNESS;
+    this.darkness = this.art.darkness(level.world);
 
-    this.level.addChild(new Sprite(texture(drawTerrain(level))));
+    this.level.addChild(this.art.terrain(level));
     this.waterSprites = [];
     for (let row = 0; row < level.height; row++) {
       for (let col = 0; col < level.width; col++) {
@@ -253,7 +241,7 @@ export class Renderer {
         this.lightTiles.push({ sprite, col, row });
       }
     }
-    const signTex = texture(drawSign());
+    const signTex = this.art.sign();
     for (const s of level.signs) {
       const sprite = new Sprite(signTex);
       sprite.anchor.set(0.5, 1);
@@ -266,7 +254,7 @@ export class Renderer {
       let row = Math.floor(l.y / TILE) + 1;
       while (row < level.height && tileAt(level, col, row) !== Tile.Ground) row++;
       const top = l.y + 4;
-      const post = new Sprite(texture(drawPost(row * TILE - top)));
+      const post = new Sprite(this.art.post(row * TILE - top));
       post.position.set(l.x - 2, top);
       const lantern = new Sprite(this.tex.lantern[0]);
       lantern.anchor.set(0.5, 0.5);
@@ -274,7 +262,7 @@ export class Renderer {
       this.level.addChild(post, lantern);
       return lantern;
     });
-    const fire = new Sprite(texture(drawCampfire()));
+    const fire = new Sprite(this.art.campfire());
     fire.anchor.set(0.5, 1);
     fire.position.set(level.exit.x + 3, level.exit.y + TILE / 2);
     this.level.addChild(fire);
@@ -356,6 +344,8 @@ export class Renderer {
     if (this.darkSprite) this.darkSprite.texture = this.dark;
     this.sky.width = this.viewW;
     this.sky.height = this.viewH;
+    // Prechod neba sa natiahne na celú výšku (inak sa opakuje a vznikne šev).
+    this.sky.tileScale.y = this.viewH / 240;
     this.hills.width = this.trees.width = this.viewW;
   }
 
@@ -555,8 +545,8 @@ export class Renderer {
     this.player.texture = this.tex.player.get(frame)!;
     this.player.scale.x = p.facing;
     this.player.position.set(
-      Math.round(p.x + PLAYER_W / 2 + p.facing * 1),
-      Math.round(p.y + PLAYER_H + 1),
+      this.px(p.x + PLAYER_W / 2 + p.facing * 1),
+      this.px(p.y + PLAYER_H + 1),
     );
     this.player.visible =
       game.state !== 'dead' && !(p.invulnerable > 0 && Math.floor(t * 12) % 2 === 0);
@@ -577,7 +567,7 @@ export class Renderer {
     game.crystals.forEach((k, i) => {
       const s = this.crystalSprites[i]!;
       s.visible = !k.taken;
-      s.y = k.y + Math.round(Math.sin(t * 2 + i) * 1.5);
+      s.y = k.y + this.px(Math.sin(t * 2 + i) * 1.5);
     });
     game.lanterns.forEach((l, i) => {
       this.lanternSprites[i]!.texture = this.tex.lantern[l.lit ? 1 : 0]!;
@@ -592,7 +582,7 @@ export class Renderer {
       s.visible = m.alive;
       if (!m.alive) return;
       s.texture = this.tex.moth[Math.floor(m.phase * 0.8) % 2]!;
-      s.position.set(Math.round(m.x), Math.round(m.y));
+      s.position.set(this.px(m.x), this.px(m.y));
       s.scale.x = m.vx < 0 ? -1 : 1;
     });
     // Iskry: sprity podľa počtu, s iskričkami za sebou.
@@ -606,7 +596,7 @@ export class Renderer {
       const sp = game.sparks[i];
       s.visible = !!sp;
       if (!sp) return;
-      s.position.set(Math.round(sp.x), Math.round(sp.y));
+      s.position.set(this.px(sp.x), this.px(sp.y));
       if (Math.random() < 0.6) {
         this.spawn(
           this.tex.spark,
@@ -637,7 +627,7 @@ export class Renderer {
       if (!s.alive) return;
       const f = Math.floor(t * 8 + i) % 3;
       body.texture = (s.burning ? this.tex.shadeBurn : this.tex.shade)[f]!;
-      body.position.set(Math.round(s.x), Math.round(s.y));
+      body.position.set(this.px(s.x), this.px(s.y));
       body.scale.x = game.center.x < s.x ? -1 : 1;
       eyes.position.copyFrom(body.position);
       eyes.scale.x = body.scale.x;
@@ -790,18 +780,6 @@ export class Renderer {
   get camera(): { x: number; y: number; zoom: number } {
     return { ...this.cam, zoom: this.zoom };
   }
-}
-
-function eyes(): PixelCanvas {
-  const pc = drawShade(0);
-  // Len oči: ostatné pixely zmaž.
-  for (let y = 0; y < pc.height; y++) {
-    for (let x = 0; x < pc.width; x++) {
-      const c = pc.get(x, y);
-      if (c !== C.shadeEye) pc.set(x, y, 0, 0);
-    }
-  }
-  return pc;
 }
 
 function clamp(v: number, lo: number, hi: number): number {

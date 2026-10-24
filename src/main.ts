@@ -7,6 +7,7 @@ import { parseLevel } from './game/level';
 import { LEVELS } from './game/levels';
 import { parseSave, recordLevel, type SaveData } from './game/save';
 import { Controls } from './input/input';
+import { saveStyle, savedStyle } from './render/art';
 import { Renderer } from './render/renderer';
 import { getLanguage, hasKey, setLanguage, t, type Key, type Language } from './ui/i18n';
 import { TitleScene } from './ui/title';
@@ -49,7 +50,7 @@ controls.onTouch = () => {
   refreshTexts();
 };
 const renderer = new Renderer();
-const rendererReady = renderer.init(host);
+const rendererReady = renderer.init(host, savedStyle());
 let game: Game | null = null;
 let levelIndex = 0;
 let paused = false;
@@ -122,6 +123,9 @@ function refreshTexts(): void {
   $('.coming-soon').textContent = t('comingSoon');
   $('.victory-menu').textContent = t('toMenu');
   $('.rotate-text').textContent = t('rotate');
+  const style = t(savedStyle() === 'vector' ? 'styleVector' : 'stylePixel');
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.style-toggle'))
+    b.textContent = t('styleToggle', { style });
 }
 
 for (const b of document.querySelectorAll<HTMLButtonElement>('.langs button')) {
@@ -222,6 +226,15 @@ $('.continue').addEventListener(
   () => void startLevel(Math.min(readSave().unlocked, LEVELS.length - 1)),
 );
 $('.resume').addEventListener('click', () => setPaused(false));
+for (const b of document.querySelectorAll<HTMLButtonElement>('.style-toggle')) {
+  b.addEventListener('click', async () => {
+    const next = savedStyle() === 'vector' ? 'pixel' : 'vector';
+    saveStyle(next);
+    refreshTexts();
+    await rendererReady;
+    renderer.setStyle(next);
+  });
+}
 $('.restart').addEventListener('click', () => void startLevel(levelIndex));
 $('.to-menu').addEventListener('click', () => toMenu());
 $('.sound-toggle').addEventListener('click', () => {
