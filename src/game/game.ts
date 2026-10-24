@@ -548,8 +548,11 @@ export class Game {
   /** Poloha plošín: plynulo tam a späť (kosínus), zvislé stúpajú nahor. */
   private updateMovers(): void {
     const omega = Math.PI / MOVER_TRIP;
-    for (const [i, m] of this.movers.entries()) {
-      const offset = (MOVER_RANGE / 2) * (1 - Math.cos(this.time * omega + i * 0.9));
+    for (const m of this.movers) {
+      // Fáza podľa polohy: plošiny v reťazi (7 políčok od seba) sa hýbu proti sebe,
+      // takže sa na chvíľu priblížia na jedno políčko a skok treba načasovať.
+      const phase = (m.origin.x / TILE) * (Math.PI / 7);
+      const offset = (MOVER_RANGE / 2) * (1 - Math.cos(this.time * omega + phase));
       const x = m.axis === 'h' ? m.origin.x + offset : m.origin.x;
       const y = m.axis === 'v' ? m.origin.y - offset : m.origin.y;
       m.dx = x - m.x;

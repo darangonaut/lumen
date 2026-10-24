@@ -55,7 +55,16 @@ export function botRun(game: Game, seconds = 240): { done: boolean; col: number;
             target = { c: ahead(d), r };
             break;
           }
+      // Inak prejde na pravý okraj a skočí na ďalšiu pohyblivú plošinu, keď je na dosah.
+      const cur = game.movers[game.onMover]!;
+      const next = game.movers.find(
+        (m) => m !== cur && m.x > cur.x && m.x < cur.x + 10 * TILE && Math.abs(m.y - feetY) <= 24,
+      );
+      const atEdge = p.x + PLAYER_W >= cur.x + MOVER_W - 4;
+      const reach = next && next.x <= p.x + PLAYER_W + 36 && Math.abs(next.y - feetY) <= 8;
       if (target) step({ right: true, jump: target.r < feet });
+      else if (next && reach && atEdge) step({ right: true, jump: true });
+      else if (next && !atEdge) step({ right: true });
       else step({});
       continue;
     }
