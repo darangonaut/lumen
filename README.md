@@ -45,6 +45,21 @@ But the oil in the lantern is slowly running out.
 - On Stormy Peak the **wind** blows in gusts: it pushes you in mid-air, but it can't move you while you stand still.
   Wait behind a rock, and jump when the wind dies down.
 
+## Surprises
+
+Some levels hide a moment you won't see coming. Each one happens once, and each one is fair: there is always a warning or a way out.
+
+- **The echo** — in the deep caves and at the last lamps, a violet silhouette of the girl steps out of the dark and repeats every move she made a few seconds ago. Keep moving and it never catches you; stand still and it steals your oil. Flaring the lantern or a lit lamp dissolves it.
+- **The false firefly** — it doesn't drift, it glows amber and pulses like a heartbeat. Come close and a giant eye opens in the darkness above it, its gaze drinking your oil. Flare the lantern to blind it, or run.
+- **The sleeping giant** — the mossy boulder ahead is not a rock. It wakes, rises on its legs and walks across the land, shaking the ground with every step — and where it stamps, it leaves stones over thorns or icy water.
+- **The hush** — the lantern sputters and dies. For three seconds the girl holds her breath, and all around her eyes open in the dark. The shades creep closer but do not strike, until the lantern blazes back and throws them away.
+
+| ![The false firefly](docs/screenshots/eye.png) |      ![The hush](docs/screenshots/hush.png)       |
+| :--------------------------------------------: | :-----------------------------------------------: |
+|  The false firefly — an eye opens in the dark  |          The hush — only the eyes remain          |
+|     ![The echo](docs/screenshots/echo.png)     | ![The sleeping giant](docs/screenshots/giant.png) |
+| The echo — your own shape, a few steps behind  |     The sleeping giant — the boulder wakes up     |
+
 ## Controls
 
 | Action                     | Keyboard      | Touch |
