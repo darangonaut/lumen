@@ -11,7 +11,7 @@ import {
   windAt,
   type Input,
 } from '@/game/game';
-import { TILE, isGround, parseLevel, type LevelDef } from '@/game/level';
+import { TILE, Tile, isGround, parseLevel, type LevelDef } from '@/game/level';
 import { LEVELS } from '@/game/levels';
 
 const DT = 1 / 60;
@@ -460,5 +460,48 @@ describe('falošná svetluška', () => {
     const events = run(game, 0.6, { flare: true });
     expect(events.some((e) => e.type === 'eyeShut')).toBe(true);
     expect(game.lures[0]!.state).toBe('gone');
+  });
+});
+
+describe('obor', () => {
+  const ROWS = [
+    ' '.repeat(60),
+    ' P' + ' '.repeat(57) + 'E',
+    '#'.repeat(20) + 'wwww' + '#'.repeat(36),
+  ];
+  const giantGame = () =>
+    new Game(
+      parseLevel({
+        id: 'giant',
+        name: 'giant',
+        world: 'forest',
+        rows: ROWS,
+        surprises: {
+          giant: { trigger: 3, start: 12, step: 21, row: 2, from: 20, to: 23, ground: 2 },
+        },
+      }),
+    );
+
+  it('prebudí sa, prejde a nad vodou nechá kamene, po ktorých sa dá prejsť', () => {
+    const game = giantGame();
+    const events = run(game, 1, { right: true });
+    expect(events.some((e) => e.type === 'giantWake')).toBe(true);
+    const later = run(game, 30);
+    expect(later.some((e) => e.type === 'giantStep')).toBe(true);
+    expect(later.some((e) => e.type === 'giantStomp')).toBe(true);
+    expect(game.level.tiles[2 * 60 + 21]).toBe(Tile.Ground);
+    run(game, 12, { right: true });
+    expect(game.state).toBe('done');
+    expect(game.deaths).toBe(0);
+  });
+
+  it('v leveloch mení len vodu alebo tŕne (nikdy nezatarasí cestu)', () => {
+    for (const def of LEVELS) {
+      const g = def.surprises?.giant;
+      if (!g) continue;
+      const level = parseLevel(def);
+      for (let col = g.from; col <= g.to; col++)
+        expect([Tile.Water, Tile.Thorns]).toContain(level.tiles[g.row * level.width + col]);
+    }
   });
 });

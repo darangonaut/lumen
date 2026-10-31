@@ -183,6 +183,96 @@ function giantEye(): Texture {
   });
 }
 
+/**
+ * Spiaci obor (128 × 84): hrbatý balvan s machom, mladým stromčekom na chrbte, visiacimi
+ * koreňmi a ťažkou hlavou vpredu (vpravo). Kotva v strede dolného okraja.
+ */
+function giantBody(): Texture {
+  return paint(128, 84, (ctx) => {
+    ctx.fillStyle = INK_CSS;
+    ctx.strokeStyle = INK_CSS;
+    // Hrb: niekoľko prekrývajúcich sa balvanov.
+    for (const [x, y, rx, ry] of [
+      [60, 52, 50, 30],
+      [44, 44, 30, 26],
+      [74, 40, 32, 26],
+      [98, 56, 22, 18],
+      [24, 60, 20, 18],
+    ] as const) {
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Hlava s nadočnicovým oblúkom a čeľusťou.
+    ctx.beginPath();
+    ctx.ellipse(112, 64, 13, 11, 0.25, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(102, 55);
+    ctx.quadraticCurveTo(117, 47, 127, 58);
+    ctx.lineTo(123, 60);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(104, 70);
+    ctx.lineTo(124, 72);
+    ctx.lineTo(116, 79);
+    ctx.closePath();
+    ctx.fill();
+    // Brucho: zaoblené, nie rovné.
+    ctx.beginPath();
+    ctx.ellipse(62, 66, 48, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Mach a tráva na chrbte.
+    ctx.lineWidth = 0.7;
+    for (let i = 0; i < 46; i++) {
+      const x = 14 + i * 2.2;
+      const a = (x - 64) / 52;
+      const top = 18 + a * a * 30 + Math.sin(i * 1.7) * 2;
+      ctx.beginPath();
+      ctx.moveTo(x, top + 3);
+      ctx.lineTo(x + Math.sin(i * 2.3) * 1.5, top - 2 - (i % 3));
+      ctx.stroke();
+    }
+    // Stromček na chrbte.
+    ctx.lineWidth = 1.4;
+    line(ctx, 58, 20, 56, 2, 1.4);
+    ctx.lineWidth = 0.8;
+    line(ctx, 57, 9, 50, 4, 0.8);
+    line(ctx, 56.5, 6, 63, 1, 0.8);
+    for (const [x, y, r] of [
+      [50, 4, 3],
+      [63, 1.5, 3.2],
+      [56, 1, 2.6],
+    ] as const)
+      circle(ctx, x, y, r);
+    // Visiace korene pod bruchom.
+    ctx.lineWidth = 0.6;
+    for (const x of [30, 46, 70, 88]) {
+      ctx.beginPath();
+      ctx.moveTo(x, 78);
+      ctx.quadraticCurveTo(x + 2, 84, x - 1, 88);
+      ctx.stroke();
+    }
+  });
+}
+
+/** Noha obra (24 × 44), kotva hore v strede. */
+function giantLeg(): Texture {
+  return paint(24, 44, (ctx) => {
+    ctx.fillStyle = INK_CSS;
+    ctx.beginPath();
+    ctx.moveTo(3, 0);
+    ctx.lineTo(21, 0);
+    ctx.quadraticCurveTo(19, 22, 20, 38);
+    ctx.quadraticCurveTo(24, 40, 23, 44);
+    ctx.lineTo(1, 44);
+    ctx.quadraticCurveTo(1, 40, 5, 38);
+    ctx.quadraticCurveTo(6, 22, 3, 0);
+    ctx.fill();
+  });
+}
+
 /** Zvislá zrenica obrovského oka. */
 function eyePupil(): Texture {
   return paint(6, 16, (ctx) => {
@@ -1184,6 +1274,8 @@ export const vectorArt: Art = {
   echo,
   giantEye,
   eyePupil,
+  giantBody,
+  giantLeg,
   shade,
   eyes,
   firefly,

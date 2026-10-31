@@ -50,11 +50,29 @@ export interface Sign extends Point {
 /**
  * Prekvapenia levelu (zadané mimo ASCII mapy, súradnice v políčkach):
  * echo = stĺpec, za ktorým sa za hráčom vynorí jeho temná ozvena;
- * lures = falošné svetlušky [stĺpec, riadok] — návnady obrovského oka v tme.
+ * lures = falošné svetlušky [stĺpec, riadok] — návnady obrovského oka v tme;
+ * giant = spiaci obor v pozadí, ktorý sa prebudí a pri prechode zmení terén.
  */
 export interface Surprises {
   echo?: number;
   lures?: [number, number][];
+  giant?: GiantDef;
+}
+
+/**
+ * Obor spí ako balvan v stĺpci `start`, prebudí sa, keď hráč prejde stĺpec `trigger`,
+ * a prejde doprava. V stĺpci `step` dupne a v riadku `row` od `from` po `to` nechá
+ * kamene (pevná zem) — cez vodu či tŕne tak vznikne cesta. Terén len uľahčí, nikdy
+ * nezatarasí. `ground` = riadok zeme, po ktorej kráča (výška chodidiel).
+ */
+export interface GiantDef {
+  trigger: number;
+  start: number;
+  step: number;
+  row: number;
+  from: number;
+  to: number;
+  ground: number;
 }
 
 export interface LevelDef {

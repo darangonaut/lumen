@@ -78,6 +78,9 @@ export const LEVELS: LevelDef[] = [
     id: 'forest-4',
     world: 'forest',
     name: 'level4',
+    surprises: {
+      giant: { trigger: 24, start: 37, step: 40, row: 11, from: 38, to: 43, ground: 12 },
+    },
     rows: [
       '',
       '',
@@ -291,6 +294,9 @@ export const LEVELS: LevelDef[] = [
     id: 'ice-1',
     world: 'ice',
     name: 'level13',
+    surprises: {
+      giant: { trigger: 42, start: 58, step: 62, row: 12, from: 61, to: 64, ground: 12 },
+    },
     hints: ['hintIce', 'hintIcicle'],
     rows: [
       '',

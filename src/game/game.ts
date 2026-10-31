@@ -127,6 +127,11 @@ export const EYE_DRAIN = 10;
 export const EYE_RANGE = 110;
 /** Oko je nad návnadou, v tme za ňou. */
 export const EYE_OFFSET = 44;
+/** Obor: ako dlho vstáva, ako rýchlo kráča, ako často dupne a kam až dôjde. */
+export const GIANT_RISE = 1.8;
+export const GIANT_SPEED = 20;
+const GIANT_STRIDE = 1.2;
+const GIANT_WALK = 22 * TILE;
 
 export type GameEvent =
   | { type: 'jump' }
@@ -151,6 +156,9 @@ export type GameEvent =
   | { type: 'lightning' }
   | { type: 'eye'; x: number; y: number }
   | { type: 'eyeShut'; x: number; y: number }
+  | { type: 'giantWake'; x: number }
+  | { type: 'giantStep'; x: number }
+  | { type: 'giantStomp'; x: number; y: number }
   | { type: 'echo' }
   | { type: 'echoFade'; x: number; y: number }
   | { type: 'died'; cause: DeathCause }
@@ -218,6 +226,21 @@ export interface Lure extends Point {
   timer: number;
   /** Sekundy od otvorenia (pre animáciu). */
   age: number;
+}
+
+/** Spiaci obor v pozadí. */
+export interface Giant {
+  state: 'sleep' | 'rise' | 'walk' | 'gone';
+  /** Stred obra (px). */
+  x: number;
+  /** Výška chodidiel (px). */
+  ground: number;
+  /** Sekundy v aktuálnom stave. */
+  t: number;
+  /** Už dupol a nechal kamene. */
+  stomped: boolean;
+  /** Fáza kroku (pre animáciu). */
+  stride: number;
 }
 
 interface TrailSample {
@@ -343,6 +366,8 @@ export class Game {
   /** Temná ozvena hráča (len v niektorých leveloch). */
   readonly echo: Echo | null;
   readonly lures: Lure[];
+  readonly giant: Giant | null;
+  private nextStride = 0;
   private trail: TrailSample[] = [];
   private events: GameEvent[] = [];
 
@@ -419,6 +444,17 @@ export class Game {
       timer: 0,
       age: 0,
     }));
+    const g = level.surprises.giant;
+    this.giant = g
+      ? {
+          state: 'sleep',
+          x: g.start * TILE + TILE / 2,
+          ground: g.ground * TILE,
+          t: 0,
+          stomped: false,
+          stride: 0,
+        }
+      : null;
     this.echo =
       level.surprises.echo === undefined
         ? null
@@ -514,6 +550,7 @@ export class Game {
     if (this.state === 'play') this.updateShades(dt);
     if (this.state === 'play') this.updateEcho(dt);
     this.updateLures(dt);
+    this.updateGiant(dt);
     if (this.state === 'play') this.updateMoths(dt);
     if (this.state === 'play') this.collect();
     return this.events;
@@ -1068,6 +1105,54 @@ export class Game {
     p.vy = -150;
     p.onGround = false;
     this.events.push({ type: 'hurt' });
+  }
+
+  /** Obor: vstane, prejde krajinou a v jednom mieste dupne a nechá kamene. */
+  private updateGiant(dt: number): void {
+    const giant = this.giant;
+    const def = this.level.surprises.giant;
+    if (!giant || !def || giant.state === 'gone') return;
+    giant.t += dt;
+    if (giant.state === 'sleep') {
+      if (this.state === 'play' && this.center.x > def.trigger * TILE) {
+        giant.state = 'rise';
+        giant.t = 0;
+        this.events.push({ type: 'giantWake', x: giant.x });
+      }
+      return;
+    }
+    if (giant.state === 'rise') {
+      if (giant.t >= GIANT_RISE) {
+        giant.state = 'walk';
+        giant.t = 0;
+        this.nextStride = GIANT_STRIDE * 0.5;
+      }
+      return;
+    }
+    giant.x += GIANT_SPEED * dt;
+    giant.stride += dt / GIANT_STRIDE;
+    this.nextStride -= dt;
+    if (this.nextStride <= 0) {
+      this.nextStride += GIANT_STRIDE;
+      this.events.push({ type: 'giantStep', x: giant.x });
+    }
+    if (!giant.stomped && giant.x >= def.step * TILE + TILE / 2) this.giantStomp(def);
+    if (giant.x > (def.start + 0.5) * TILE + GIANT_WALK) giant.state = 'gone';
+  }
+
+  /** Kamene od obra: z vody či tŕňov sa stane pevná zem (nie pod hráčom). */
+  private giantStomp(def: NonNullable<Level['surprises']['giant']>): void {
+    const p = this.player;
+    for (let col = def.from; col <= def.to; col++)
+      if (this.overlapsTileAt(col, def.row, p.x, p.y)) return; // počká, kým hráč odíde
+    for (let col = def.from; col <= def.to; col++)
+      this.level.tiles[def.row * this.level.width + col] = Tile.Ground;
+    this.giant!.stomped = true;
+    this.events.push({
+      type: 'giantStomp',
+      x: ((def.from + def.to + 1) / 2) * TILE,
+      y: def.row * TILE,
+    });
   }
 
   /** Oko za falošnou svetluškou: otvorí sa pri priblížení, pije olej, rozžiarený lampáš ho zavrie. */

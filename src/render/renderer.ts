@@ -10,6 +10,7 @@ import {
 import {
   EYE_OFFSET,
   FLARE_RADIUS,
+  GIANT_RISE,
   LANTERN_RADIUS,
   SPARK_RADIUS,
   PLAYER_H,
@@ -82,6 +83,8 @@ export class Renderer {
     player: new Map<string, Texture>(),
     echo: new Map<string, Texture>(),
     giantEye: Texture.EMPTY,
+    giantBody: Texture.EMPTY,
+    giantLeg: Texture.EMPTY,
     pupil: Texture.EMPTY,
     shade: [] as Texture[],
     shadeBurn: [] as Texture[],
@@ -117,6 +120,13 @@ export class Renderer {
   private waterSprites: { sprite: Sprite; col: number }[] = [];
   private player = new Sprite();
   private echoSprite = new Sprite();
+  private giantParts: {
+    root: Container;
+    body: Sprite;
+    legs: Sprite[];
+    eyes: Sprite;
+    fade: number;
+  } | null = null;
   private lureSprites: { bait: Sprite; eye: Sprite; pupil: Sprite; close: number }[] = [];
   private echoPhase = 0;
   private shadeSprites: { body: Sprite; eyes: Sprite }[] = [];
@@ -179,6 +189,8 @@ export class Renderer {
     this.tex.shadeBurn = [0, 1, 2].map((f) => art.shade(f, true));
     this.tex.eyes = art.eyes();
     this.tex.giantEye = art.giantEye();
+    this.tex.giantBody = art.giantBody();
+    this.tex.giantLeg = art.giantLeg();
     this.tex.pupil = art.eyePupil();
     this.tex.firefly = art.firefly();
     this.tex.crystal = art.crystal();
@@ -386,8 +398,33 @@ export class Renderer {
     this.echoSprite.visible = false;
     this.above.addChild(this.echoSprite);
 
+    // Obor v pozadí: za terénom, aby sa jeho chodidlá skryli za zemou.
+    const giantBack = new Container();
+    this.giantParts = null;
+    if (game.giant) {
+      const root = new Container();
+      const legs = [0, 1].map((i) => {
+        const leg = new Sprite(this.tex.giantLeg);
+        leg.anchor.set(0.5, 0);
+        leg.x = i === 0 ? -30 : 22;
+        return leg;
+      });
+      const body = new Sprite(this.tex.giantBody);
+      body.anchor.set(0.5, 1);
+      root.addChild(legs[0]!, body, legs[1]!);
+      root.position.set(game.giant.x, game.giant.ground);
+      giantBack.addChild(root);
+      const eyes = new Sprite(this.tex.eyes);
+      eyes.anchor.set(0.5);
+      eyes.tint = 0xffb040;
+      eyes.visible = false;
+      this.eyes.addChild(eyes);
+      this.giantParts = { root, body, legs, eyes, fade: 0 };
+    }
+
     if (!this.darkSprite) this.darkSprite = new Sprite();
     this.world.addChild(
+      giantBack,
       this.level,
       this.particlesBelow,
       this.actors,
@@ -496,6 +533,16 @@ export class Renderer {
         case 'eye':
           this.shake = 3;
           break;
+        case 'giantWake':
+          this.shake = 4;
+          break;
+        case 'giantStep':
+          if (Math.abs(e.x - this.cam.x) < this.viewW) this.shake = Math.max(this.shake, 2.5);
+          break;
+        case 'giantStomp':
+          this.shake = 7;
+          this.stones(e.x, e.y);
+          break;
         case 'eyeShut':
           this.burst(e.x, e.y, 14, C.flameRed, 40, true);
           break;
@@ -548,6 +595,23 @@ export class Renderer {
           break;
       }
     }
+  }
+
+  /** Kamene, ktoré nechal obor: zakryjú vodu či tŕne a vytvoria cestu. */
+  private stones(x: number, y: number): void {
+    const def = this.game.level.surprises.giant;
+    if (!def) return;
+    const g = new Graphics();
+    for (let col = def.from; col <= def.to; col++) {
+      const x0 = col * TILE;
+      g.roundRect(x0 - 1, def.row * TILE + 1, TILE + 2, TILE + 2, 5).fill(0x05060b);
+      g.circle(x0 + 5 + (col % 2) * 6, def.row * TILE + 2, 4).fill(0x05060b);
+    }
+    this.level.addChild(g);
+    for (const w of this.waterSprites)
+      if (w.col >= def.from && w.col <= def.to && w.sprite.y === def.row * TILE)
+        w.sprite.visible = false;
+    this.burst(x, y, 30, 0x5a5a6a, 70, false);
   }
 
   private spawn(
@@ -682,6 +746,35 @@ export class Renderer {
       this.echoSprite.scale.x = e.facing;
       this.echoSprite.position.set(e.x + PLAYER_W / 2 + e.facing, e.y + PLAYER_H + 1);
       this.echoSprite.alpha = 0.75 + Math.sin(t * 5) * 0.15;
+    }
+
+    // Obor: spí ako balvan, vstane, kráča (nohy sa kývu, telo sa hojdá) a odíde do hmly.
+    const gi = game.giant;
+    const gp = this.giantParts;
+    if (gi && gp) {
+      let bodyY = 6;
+      let swing = 0;
+      if (gi.state === 'rise') {
+        const k = Math.min(1, gi.t / GIANT_RISE);
+        bodyY = 6 - 44 * (k * k * (3 - 2 * k));
+      } else if (gi.state === 'walk' || gi.state === 'gone') {
+        bodyY = -38 - Math.abs(Math.sin(gi.stride * Math.PI)) * 3;
+        swing = Math.sin(gi.stride * Math.PI) * 0.24;
+      }
+      if (gi.state === 'gone') gp.fade = Math.min(1, gp.fade + dt / 1.5);
+      gp.root.visible = gp.fade < 1;
+      gp.root.alpha = 1 - gp.fade;
+      gp.root.position.set(gi.x, gi.ground);
+      gp.body.y = bodyY;
+      gp.legs.forEach((leg, i) => {
+        leg.y = bodyY - 6;
+        leg.scale.y = Math.max(0.01, -leg.y / 44);
+        leg.rotation = i === 0 ? swing : -swing;
+      });
+      const awake = (gi.state === 'rise' && gi.t > 0.7) || gi.state === 'walk';
+      gp.eyes.visible = awake;
+      gp.eyes.position.set(gi.x + 50, gi.ground + bodyY - 24);
+      gp.eyes.alpha = 0.9;
     }
 
     // Falošné svetlušky stoja na mieste a pulzujú dvojitým úderom ako srdce;

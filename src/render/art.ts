@@ -22,6 +22,9 @@ export interface Art {
   /** Obrovské oko v tme (44 × 24) a jeho zrenica (6 × 16). */
   giantEye(): Texture;
   eyePupil(): Texture;
+  /** Spiaci obor: telo (128 × 84, kotva dole v strede) a noha (24 × 44, kotva hore). */
+  giantBody(): Texture;
+  giantLeg(): Texture;
   shade(frame: number, burning: boolean): Texture;
   eyes(): Texture;
   firefly(): Texture;

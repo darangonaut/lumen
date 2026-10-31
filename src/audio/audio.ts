@@ -194,6 +194,19 @@ export class Sound {
             this.tone(this.note(n) * 2, 'triangle', 0.04, 0.3, this.master!, i * 0.04),
           );
           break;
+        case 'giantWake':
+          // Hlboké zastonanie a drolenie kameňa.
+          this.sweep(55, 32, 'sawtooth', 0.14, 2.6);
+          this.noise(2.2, 160, 0.16);
+          break;
+        case 'giantStep':
+          this.sweep(70, 28, 'sine', 0.2, 0.6);
+          this.noise(0.5, 120, 0.12);
+          break;
+        case 'giantStomp':
+          this.sweep(90, 25, 'sine', 0.28, 1);
+          this.noise(1, 200, 0.2);
+          break;
         case 'eye':
           // Mokré otvorenie viečka a hlboké zadunenie.
           this.noise(0.5, 300, 0.14, 'bandpass');
