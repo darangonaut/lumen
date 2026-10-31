@@ -101,6 +101,32 @@ function player(frame: PlayerFrame | 'breathe'): Texture {
   return paint(14, 17, (ctx) => drawGirl(ctx, pose));
 }
 
+/** Ozvena: tá istá postavička, ale celá temne fialová, so žiarou a zhasnutým lampášom. */
+function echo(frame: PlayerFrame | 'breathe'): Texture {
+  const R = 8;
+  const pose = breathePose(frame);
+  const off = document.createElement('canvas');
+  off.width = 18 * R;
+  off.height = 21 * R;
+  const o = off.getContext('2d')!;
+  o.scale(R, R);
+  o.translate(2, 2);
+  drawGirl(o, pose);
+  o.setTransform(1, 0, 0, 1, 0, 0);
+  o.globalCompositeOperation = 'source-in';
+  o.fillStyle = '#1a0d2c';
+  o.fillRect(0, 0, off.width, off.height);
+  return paint(18, 21, (ctx) => {
+    ctx.shadowColor = '#9a5cff';
+    ctx.shadowBlur = 18;
+    ctx.drawImage(off, 0, 0, 18, 21);
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#e0a0ff';
+    ctx.fillStyle = '#f0c8ff';
+    circle(ctx, 2 + 8.1, 2 + 4.4 + pose.dy, 0.55);
+  });
+}
+
 function breathePose(frame: PlayerFrame | 'breathe'): GirlPose {
   const f = frame === 'breathe' ? 'idle' : frame;
   return {
@@ -1089,6 +1115,7 @@ export const vectorArt: Art = {
   mover,
   terrain,
   player,
+  echo,
   shade,
   eyes,
   firefly,

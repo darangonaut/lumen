@@ -115,6 +115,11 @@ const CRUMBLE_RESPAWN = 3;
 /** Koľko sekúnd vydrží hráč v úplnej tme (bez oleja), kým ho tma pohltí. */
 export const DREAD_LIMIT = 4;
 const RESPAWN_DELAY = 1.1;
+/** Ozvena: o koľko sekúnd za hráčom ide, kedy sa po rozplynutí znova zloží a ako dlho žije. */
+export const ECHO_DELAY = 2.4;
+const ECHO_REFORM = 3.5;
+const ECHO_LIFE = 45;
+const ECHO_GAP = 48;
 
 export type GameEvent =
   | { type: 'jump' }
@@ -137,6 +142,8 @@ export type GameEvent =
   | { type: 'lunge' }
   | { type: 'gust'; dir: number }
   | { type: 'lightning' }
+  | { type: 'echo' }
+  | { type: 'echoFade'; x: number; y: number }
   | { type: 'died'; cause: DeathCause }
   | { type: 'respawn' }
   | { type: 'exit' };
@@ -174,6 +181,35 @@ export interface Shade {
   /** Veľký tieň: vydrží viac zásahov. */
   big: boolean;
   hits: number;
+}
+
+/**
+ * Ozvena: temná silueta hráča, ktorá s oneskorením opakuje jeho pohyby. Kto nezastane,
+ * toho nedobehne; dotyk berie olej, rozžiarený lampáš alebo lampa ju rozplynie.
+ */
+export interface Echo {
+  x: number;
+  y: number;
+  facing: 1 | -1;
+  onGround: boolean;
+  vx: number;
+  vy: number;
+  /** wait = ešte sa nevynorila, walk = ide za hráčom, faded = rozplynutá, off = skončila. */
+  state: 'wait' | 'walk' | 'faded' | 'off';
+  /** Je už na scéne (prvé sekundy za hráčom ešte nie je). */
+  visible: boolean;
+  timer: number;
+  age: number;
+}
+
+interface TrailSample {
+  t: number;
+  x: number;
+  y: number;
+  facing: 1 | -1;
+  onGround: boolean;
+  vx: number;
+  vy: number;
 }
 
 export interface Icicle {
@@ -286,6 +322,9 @@ export class Game {
   sheltered = false;
   /** Záblesk blesku (1 = práve udrel, klesá k 0). */
   flash = 0;
+  /** Temná ozvena hráča (len v niektorých leveloch). */
+  readonly echo: Echo | null;
+  private trail: TrailSample[] = [];
   private events: GameEvent[] = [];
 
   constructor(readonly level: Level) {
@@ -354,6 +393,21 @@ export class Game {
       phase: this.rng.next() * Math.PI * 2,
       hp: 1,
     }));
+    this.echo =
+      level.surprises.echo === undefined
+        ? null
+        : {
+            x: 0,
+            y: 0,
+            facing: 1,
+            onGround: true,
+            vx: 0,
+            vy: 0,
+            state: 'wait',
+            visible: false,
+            timer: 0,
+            age: 0,
+          };
     level.tiles.forEach((tile, i) => {
       if (tile !== Tile.Crumble) return;
       const c: Crumble = {
@@ -432,6 +486,7 @@ export class Game {
     this.throwSpark(dt, input);
     this.updateSparks(dt);
     if (this.state === 'play') this.updateShades(dt);
+    if (this.state === 'play') this.updateEcho(dt);
     if (this.state === 'play') this.updateMoths(dt);
     if (this.state === 'play') this.collect();
     return this.events;
@@ -973,14 +1028,92 @@ export class Game {
   }
 
   private hurt(s: Shade): void {
+    this.hurtFrom(s.x);
+    this.recoil(s);
+  }
+
+  /** Zásah zo strany x: olej, krátka nezraniteľnosť a odhodenie. */
+  private hurtFrom(x: number): void {
     const p = this.player;
     this.oil = Math.max(0, this.oil - SHADE_HIT_OIL);
     p.invulnerable = 1.2;
-    p.vx = Math.sign(p.x + PLAYER_W / 2 - s.x || 1) * 140;
+    p.vx = Math.sign(p.x + PLAYER_W / 2 - x || 1) * 140;
     p.vy = -150;
     p.onGround = false;
     this.events.push({ type: 'hurt' });
-    this.recoil(s);
+  }
+
+  /** Ozvena: zaznamenáva pohyb hráča a o ECHO_DELAY sekúnd neskôr ho po ňom opakuje. */
+  private updateEcho(dt: number): void {
+    const e = this.echo;
+    if (!e || e.state === 'off') return;
+    const p = this.player;
+    if (e.state === 'wait') {
+      if (this.center.x < this.level.surprises.echo! * TILE) return;
+      e.state = 'walk';
+      e.age = 0;
+      e.visible = false;
+      this.trail = [];
+      this.events.push({ type: 'echo' });
+    }
+    this.trail.push({
+      t: this.time,
+      x: p.x,
+      y: p.y,
+      facing: p.facing,
+      onGround: p.onGround,
+      vx: p.vx,
+      vy: p.vy,
+    });
+    const target = this.time - ECHO_DELAY;
+    while (this.trail.length > 1 && this.trail[1]!.t <= target) this.trail.shift();
+    e.age += dt;
+    const fade = (state: 'faded' | 'off') => {
+      if (e.visible)
+        this.events.push({ type: 'echoFade', x: e.x + PLAYER_W / 2, y: e.y + PLAYER_H / 2 });
+      e.state = state;
+      e.visible = false;
+      e.timer = ECHO_REFORM;
+    };
+    if (e.age > ECHO_LIFE) {
+      fade('off');
+      return;
+    }
+    if (e.state === 'faded') {
+      e.timer -= dt;
+      if (e.timer <= 0) e.state = 'walk';
+      return;
+    }
+    const sample = this.trail[0]!;
+    if (sample.t > target) return; // ešte sa nevynorila
+    // Nikdy sa nevynorí priamo na hráčovi: počká, kým má odstup.
+    if (!e.visible && Math.hypot(sample.x - p.x, sample.y - p.y) < ECHO_GAP) return;
+    e.visible = true;
+    e.x = sample.x;
+    e.y = sample.y;
+    e.facing = sample.facing;
+    e.onGround = sample.onGround;
+    e.vx = sample.vx;
+    e.vy = sample.vy;
+    const cx = e.x + PLAYER_W / 2;
+    const cy = e.y + PLAYER_H / 2;
+    // Svetlo ju rozplynie: rozžiarený lampáš alebo zapálená lampa.
+    const lamp = this.lamp;
+    const burnt =
+      (this.flaring && Math.hypot(lamp.x - cx, lamp.y - cy) < this.radius * 0.9) ||
+      this.lanterns.some((l) => l.lit && Math.hypot(l.x - cx, l.y - cy) < LANTERN_RADIUS * 0.8);
+    if (burnt) {
+      fade('faded');
+      return;
+    }
+    if (
+      p.invulnerable <= 0 &&
+      Math.abs(e.x - p.x) < PLAYER_W - 1 &&
+      Math.abs(e.y - p.y) < PLAYER_H - 2
+    ) {
+      this.hurtFrom(cx);
+      fade('faded');
+    }
   }
 
   private collect(): void {
@@ -1042,6 +1175,11 @@ export class Game {
       m.y = m.home.y;
       m.vx = m.vy = 0;
       m.drinking = false;
+    }
+    if (this.echo && this.echo.state !== 'off') {
+      this.echo.state = 'wait';
+      this.echo.visible = false;
+      this.trail = [];
     }
     for (const s of this.shades) {
       if (!s.alive) continue;

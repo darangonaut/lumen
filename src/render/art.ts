@@ -17,6 +17,8 @@ export interface Art {
   info(world: World): WorldInfo;
   terrain(level: Level): Container;
   player(frame: PlayerFrame | 'breathe'): Texture;
+  /** Temná ozvena postavičky (18 × 21, postavička posunutá o 2 doprava a nadol). */
+  echo(frame: PlayerFrame | 'breathe'): Texture;
   shade(frame: number, burning: boolean): Texture;
   eyes(): Texture;
   firefly(): Texture;

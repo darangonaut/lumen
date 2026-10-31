@@ -167,11 +167,11 @@ function showBanner(text: string, sub = ''): void {
 }
 
 let toastTimer = 0;
-function showToast(text: string): void {
+function showToast(text: string, ms = 1800): void {
   toast.textContent = text;
   toast.classList.add('show');
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1800);
+  toastTimer = window.setTimeout(() => toast.classList.remove('show'), ms);
 }
 
 async function startLevel(index: number): Promise<void> {
@@ -353,6 +353,8 @@ function onEvents(events: GameEvent[]): void {
                   : 'diedDark',
         ),
       );
+    } else if (e.type === 'echo') {
+      showToast(t('echoRise'), 3400);
     } else if (e.type === 'exit') {
       doneTimer = 1.8;
     } else if (e.type === 'firefly' || e.type === 'lantern') {

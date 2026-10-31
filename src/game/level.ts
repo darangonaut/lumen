@@ -47,6 +47,14 @@ export interface Sign extends Point {
   hint: string;
 }
 
+/**
+ * Prekvapenia levelu (zadané mimo ASCII mapy, súradnice v políčkach):
+ * echo = stĺpec, za ktorým sa za hráčom vynorí jeho temná ozvena.
+ */
+export interface Surprises {
+  echo?: number;
+}
+
 export interface LevelDef {
   id: string;
   /** Kľúč názvu v i18n. */
@@ -54,6 +62,7 @@ export interface LevelDef {
   world: World;
   /** Kľúče rád pre tabule 1–9 (index 0 = tabuľa „1“). */
   hints?: string[];
+  surprises?: Surprises;
   rows: string[];
 }
 
@@ -75,6 +84,7 @@ export interface Level {
   movers: MoverDef[];
   signs: Sign[];
   exit: Point;
+  surprises: Surprises;
 }
 
 const TILES: Record<string, Tile> = {
@@ -115,6 +125,7 @@ export function parseLevel(def: LevelDef): Level {
     movers: [],
     signs: [],
     exit: { x: 0, y: 0 },
+    surprises: def.surprises ?? {},
   };
   let hasStart = false;
   let hasExit = false;

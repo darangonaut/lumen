@@ -376,3 +376,56 @@ describe('nové svety', () => {
     expect(game.wind).toBe(0);
   });
 });
+
+describe('ozvena', () => {
+  const LONG = [' '.repeat(80), ' P' + ' '.repeat(77) + 'E', '#'.repeat(80)];
+  const echoGame = () =>
+    new Game(
+      parseLevel({ id: 'echo', name: 'echo', world: 'abyss', rows: LONG, surprises: { echo: 4 } }),
+    );
+
+  it('vynorí sa za stĺpcom a kto nezastane, toho nedobehne', () => {
+    const game = echoGame();
+    const events = run(game, 4, { right: true });
+    expect(events.some((e) => e.type === 'echo')).toBe(true);
+    expect(game.echo!.visible).toBe(true);
+    expect(game.echo!.x).toBeLessThan(game.player.x - 2 * TILE);
+    expect(events.some((e) => e.type === 'hurt')).toBe(false);
+  });
+
+  it('kto zastane, toho dobehne, vezme olej a rozplynie sa', () => {
+    const game = echoGame();
+    run(game, 2, { right: true });
+    const events = run(game, 3);
+    expect(events.some((e) => e.type === 'hurt')).toBe(true);
+    expect(events.some((e) => e.type === 'echoFade')).toBe(true);
+    expect(game.echo!.state).toBe('faded');
+  });
+
+  it('rozžiarený lampáš ju rozplynie skôr, než sa dotkne', () => {
+    const game = echoGame();
+    run(game, 2, { right: true });
+    const events = run(game, 3, { flare: true });
+    expect(events.some((e) => e.type === 'echoFade')).toBe(true);
+    expect(events.some((e) => e.type === 'hurt')).toBe(false);
+  });
+});
+
+describe('ozvena — férovosť', () => {
+  it('nevynorí sa priamo na hráčovi, ktorý zastal hneď za stĺpcom', () => {
+    const LONG = [' '.repeat(80), ' P' + ' '.repeat(77) + 'E', '#'.repeat(80)];
+    const game = new Game(
+      parseLevel({
+        id: 'echo2',
+        name: 'echo2',
+        world: 'abyss',
+        rows: LONG,
+        surprises: { echo: 2 },
+      }),
+    );
+    run(game, 0.6, { right: true });
+    const events = run(game, 6);
+    expect(events.some((e) => e.type === 'hurt')).toBe(false);
+    expect(game.echo!.visible).toBe(false);
+  });
+});

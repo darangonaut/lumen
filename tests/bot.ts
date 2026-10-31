@@ -28,6 +28,7 @@ export function botRun(game: Game, seconds = 600): { done: boolean; col: number;
     game.oil = 100;
     for (const s of game.shades) s.alive = false;
     for (const m of game.moths) m.alive = false;
+    if (game.echo) game.echo.state = 'off';
     const p = game.player;
     const front = Math.floor((p.x + PLAYER_W + 4) / TILE);
     const ahead = (d: number) => Math.floor((p.x + PLAYER_W + d) / TILE);
@@ -49,7 +50,11 @@ export function botRun(game: Game, seconds = 600): { done: boolean; col: number;
     // Búrka: na pevnej zemi počká, kým vietor utíchne a do ďalšieho nárazu je dosť času.
     if (level.world === 'storm' && p.onGround && game.onMover < 0) {
       const under = tileAt(level, Math.floor((p.x + PLAYER_W / 2) / TILE), feet);
-      if (under !== Tile.Crumble && under !== Tile.Ice && (game.wind !== 0 || calmLeft(game.time) < 1.6)) {
+      if (
+        under !== Tile.Crumble &&
+        under !== Tile.Ice &&
+        (game.wind !== 0 || calmLeft(game.time) < 1.6)
+      ) {
         hold = 0;
         step({});
         continue;

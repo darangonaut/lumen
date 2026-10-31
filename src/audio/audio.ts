@@ -194,6 +194,14 @@ export class Sound {
             this.tone(this.note(n) * 2, 'triangle', 0.04, 0.3, this.master!, i * 0.04),
           );
           break;
+        case 'echo':
+          // Zvrátený nádych: zostupný šepot a nízky tón.
+          this.noise(1.1, 1400, 0.07, 'bandpass');
+          this.sweep(220, 110, 'sine', 0.08, 1.4);
+          break;
+        case 'echoFade':
+          this.sweep(900, 200, 'triangle', 0.06, 0.5);
+          break;
         case 'shadeHit':
           this.sweep(220, 80, 'square', 0.1, 0.2);
           this.noise(0.25, 2000, 0.06, 'highpass');

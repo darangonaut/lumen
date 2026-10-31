@@ -77,6 +77,7 @@ export class Renderer {
 
   private tex = {
     player: new Map<string, Texture>(),
+    echo: new Map<string, Texture>(),
     shade: [] as Texture[],
     shadeBurn: [] as Texture[],
     eyes: Texture.EMPTY,
@@ -110,6 +111,8 @@ export class Renderer {
   private crumbleSprites: { sprite: Sprite; col: number; row: number }[] = [];
   private waterSprites: { sprite: Sprite; col: number }[] = [];
   private player = new Sprite();
+  private echoSprite = new Sprite();
+  private echoPhase = 0;
   private shadeSprites: { body: Sprite; eyes: Sprite }[] = [];
   private fireflySprites: Sprite[] = [];
   private crystalSprites: Sprite[] = [];
@@ -161,7 +164,10 @@ export class Renderer {
   }
 
   private buildTextures(): void {
-    for (const frame of PLAYER_FRAMES) this.tex.player.set(frame, art.player(frame));
+    for (const frame of PLAYER_FRAMES) {
+      this.tex.player.set(frame, art.player(frame));
+      this.tex.echo.set(frame, art.echo(frame));
+    }
     this.tex.player.set('breathe', art.player('breathe'));
     this.tex.shade = [0, 1, 2].map((f) => art.shade(f, false));
     this.tex.shadeBurn = [0, 1, 2].map((f) => art.shade(f, true));
@@ -348,6 +354,11 @@ export class Renderer {
     this.player = new Sprite(this.tex.player.get('idle'));
     this.player.anchor.set(0.5, 1);
     this.actors.addChild(this.player);
+    // Ozvena je nad tmou: v tme ju prezradí fialová žiara.
+    this.echoSprite = new Sprite(this.tex.echo.get('idle'));
+    this.echoSprite.anchor.set(0.5, 19 / 21);
+    this.echoSprite.visible = false;
+    this.above.addChild(this.echoSprite);
 
     if (!this.darkSprite) this.darkSprite = new Sprite();
     this.world.addChild(
@@ -454,6 +465,12 @@ export class Renderer {
         case 'shatter':
           this.shake = 1.5;
           this.burst(e.x, e.y, 12, 0xcfeeff, 60, true);
+          break;
+        case 'echoFade':
+          this.burst(e.x, e.y, 18, 0x9a5cff, 55, true);
+          break;
+        case 'echo':
+          this.shake = 2;
           break;
         case 'shadeHit':
           this.shake = 3;
@@ -617,6 +634,22 @@ export class Renderer {
     );
     this.player.visible =
       game.state !== 'dead' && !(p.invulnerable > 0 && Math.floor(t * 12) % 2 === 0);
+
+    // Ozvena: ten istý beh ako hráč, s oneskorením.
+    const e = game.echo;
+    this.echoSprite.visible = !!e?.visible && game.state !== 'dead';
+    if (e?.visible) {
+      let ef: PlayerFrame = 'idle';
+      if (!e.onGround) ef = e.vy < 0 ? 'jump' : 'fall';
+      else if (Math.abs(e.vx) > 10) {
+        this.echoPhase += (Math.abs(e.vx) * dt) / 7;
+        ef = (['run0', 'run1', 'run2', 'run3'] as const)[Math.floor(this.echoPhase) % 4]!;
+      }
+      this.echoSprite.texture = this.tex.echo.get(ef)!;
+      this.echoSprite.scale.x = e.facing;
+      this.echoSprite.position.set(e.x + PLAYER_W / 2 + e.facing, e.y + PLAYER_H + 1);
+      this.echoSprite.alpha = 0.75 + Math.sin(t * 5) * 0.15;
+    }
 
     // Svetelné plošiny sa plynule zjavia a zmiznú.
     for (const lt of this.lightTiles) {
