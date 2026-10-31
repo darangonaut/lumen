@@ -194,6 +194,18 @@ export class Sound {
             this.tone(this.note(n) * 2, 'triangle', 0.04, 0.3, this.master!, i * 0.04),
           );
           break;
+        case 'hush':
+          // Lampáš zaprská a zhasne; potom len tichý tlkot srdca.
+          this.noise(0.6, 2500, 0.08, 'highpass');
+          this.sweep(300, 80, 'triangle', 0.05, 0.7);
+          [1.0, 1.25, 2.1, 2.35, 3.2, 3.45].forEach((d, i) =>
+            this.tone(i % 2 ? 48 : 55, 'sine', 0.22, 0.25, this.master!, d),
+          );
+          break;
+        case 'hushEnd':
+          this.noise(0.6, 900, 0.18, 'bandpass');
+          this.sweep(90, 220, 'sawtooth', 0.07, 0.5);
+          break;
         case 'giantWake':
           // Hlboké zastonanie a drolenie kameňa.
           this.sweep(55, 32, 'sawtooth', 0.14, 2.6);

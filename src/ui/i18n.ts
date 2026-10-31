@@ -85,6 +85,7 @@ const en = {
   echoRise: 'Something behind you has taken your shape. Don’t stop.',
   eyeOpen: 'That was no firefly. Flare the lantern, or run!',
   giantWake: 'That was no rock. Something ancient is waking up…',
+  hush: 'The lantern is dying… Hold your breath. They are watching.',
   hintFlareTouch:
     'Hold ✦: the lantern flares and reveals distant platforms. It burns a lot of oil.',
   hintShadeTouch: 'Shades wait for you to falter. Jump on their heads, throw a spark ✸ or hold ✦!',
@@ -199,6 +200,7 @@ const sk: Record<Key, string> = {
   echoRise: 'Niečo za tebou si vzalo tvoju podobu. Nezastavuj.',
   eyeOpen: 'To nebola svetluška. Rozžiar lampáš, alebo uteč!',
   giantWake: 'To nebola skala. Prebúdza sa niečo prastaré…',
+  hush: 'Lampáš dohasína… Zadrž dych. Pozerajú sa.',
   hintFlareTouch: 'Podrž ✦: lampáš sa rozžiari a ukáže vzdialené plošiny. Míňa však veľa oleja.',
   hintShadeTouch: 'Tiene čakajú, kým zaváhaš. Skoč im na hlavu, hoď iskru ✸ alebo podrž ✦!',
   hintMoveTouch: 'Šípky vľavo dole na chôdzu, ⤒ vpravo na skok.',
@@ -310,6 +312,7 @@ const cs: Record<Key, string> = {
   echoRise: 'Něco za tebou si vzalo tvou podobu. Nezastavuj.',
   eyeOpen: 'To nebyla světluška. Rozzař lampáš, nebo uteč!',
   giantWake: 'To nebyla skála. Probouzí se něco prastarého…',
+  hush: 'Lampáš dohasíná… Zadrž dech. Dívají se.',
   hintFlareTouch: 'Drž ✦: lucerna se rozzáří a ukáže vzdálené plošiny. Spotřebuje ale hodně oleje.',
   hintShadeTouch: 'Stíny čekají, až zaváháš. Skoč jim na hlavu, hoď jiskru ✸ nebo drž ✦!',
   hintMoveTouch: 'Šipky vlevo dole pro chůzi, ⤒ vpravo pro skok.',

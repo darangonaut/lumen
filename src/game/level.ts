@@ -51,12 +51,14 @@ export interface Sign extends Point {
  * Prekvapenia levelu (zadané mimo ASCII mapy, súradnice v políčkach):
  * echo = stĺpec, za ktorým sa za hráčom vynorí jeho temná ozvena;
  * lures = falošné svetlušky [stĺpec, riadok] — návnady obrovského oka v tme;
- * giant = spiaci obor v pozadí, ktorý sa prebudí a pri prechode zmení terén.
+ * giant = spiaci obor v pozadí, ktorý sa prebudí a pri prechode zmení terén;
+ * hush = stĺpec tichej chvíle: lampáš na pár sekúnd zhasne a vidno len oči tieňov.
  */
 export interface Surprises {
   echo?: number;
   lures?: [number, number][];
   giant?: GiantDef;
+  hush?: number;
 }
 
 /**

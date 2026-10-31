@@ -505,3 +505,46 @@ describe('obor', () => {
     }
   });
 });
+
+describe('tichá chvíľa', () => {
+  const ROWS = [' '.repeat(40), ' P' + ' '.repeat(37) + 'E', '#'.repeat(40)];
+  const hushGame = (extra = '') =>
+    new Game(
+      parseLevel({
+        id: 'hush',
+        name: 'hush',
+        world: 'forest',
+        rows: extra
+          ? [ROWS[0]!, ROWS[1]!.slice(0, 12) + extra + ROWS[1]!.slice(13), ROWS[2]!]
+          : ROWS,
+        surprises: { hush: 5 },
+      }),
+    );
+
+  it('lampáš zhasne, dievčatko stojí, olej neubúda a potom sa lampáš rozhorí', () => {
+    const game = hushGame();
+    const events = run(game, 1, { right: true });
+    expect(events.some((e) => e.type === 'hush')).toBe(true);
+    expect(game.hushing).toBe(true);
+    const x = game.player.x;
+    const oil = game.oil;
+    run(game, 1.5, { right: true });
+    expect(game.hushLevel).toBe(1);
+    expect(Math.abs(game.player.x - x)).toBeLessThan(6);
+    expect(game.oil).toBe(oil);
+    const later = run(game, 3, { right: true });
+    expect(later.some((e) => e.type === 'hushEnd')).toBe(true);
+    expect(game.hushing).toBe(false);
+    expect(game.player.x).toBeGreaterThan(x + 20);
+  });
+
+  it('tiene sa v tme prikradnú, ale nezaútočia; rozhorený lampáš ich odhodí', () => {
+    const game = hushGame('s');
+    run(game, 1, { right: true });
+    const events = run(game, 4.6);
+    expect(events.some((e) => e.type === 'hurt')).toBe(false);
+    expect(events.some((e) => e.type === 'hushEnd')).toBe(true);
+    const s = game.shades[0]!;
+    expect(s.state).toBe('recoil');
+  });
+});

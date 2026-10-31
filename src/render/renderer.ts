@@ -11,6 +11,8 @@ import {
   EYE_OFFSET,
   FLARE_RADIUS,
   GIANT_RISE,
+  HUSH_DARK,
+  HUSH_FADE,
   LANTERN_RADIUS,
   SPARK_RADIUS,
   PLAYER_H,
@@ -120,6 +122,8 @@ export class Renderer {
   private waterSprites: { sprite: Sprite; col: number }[] = [];
   private player = new Sprite();
   private echoSprite = new Sprite();
+  /** Oči, ktoré sa v tichej chvíli otvoria v tme okolo dievčatka. */
+  private hushEyes: { sprite: Sprite; delay: number; blink: number }[] = [];
   private giantParts: {
     root: Container;
     body: Sprite;
@@ -533,6 +537,14 @@ export class Renderer {
         case 'eye':
           this.shake = 3;
           break;
+        case 'hush':
+          this.spawnHushEyes();
+          break;
+        case 'hushEnd':
+          this.shake = 4;
+          this.ring(this.game.lamp.x, this.game.lamp.y);
+          this.burst(e.x, e.y - 4, 26, C.flame, 90, true);
+          break;
         case 'giantWake':
           this.shake = 4;
           break;
@@ -595,6 +607,28 @@ export class Renderer {
           break;
       }
     }
+  }
+
+  /** Desiatka párov očí v tme okolo dievčatka; otvárajú sa postupne. */
+  private spawnHushEyes(): void {
+    for (const e of this.hushEyes) e.sprite.destroy();
+    const c = this.game.center;
+    this.hushEyes = Array.from({ length: 14 }, (_, i) => {
+      const a = Math.PI + (i / 13) * Math.PI + (Math.random() - 0.5) * 0.3;
+      const d = 34 + Math.random() * 100;
+      const sprite = new Sprite(this.tex.eyes);
+      sprite.anchor.set(0.5, 0.4);
+      sprite.position.set(c.x + Math.cos(a) * d * 1.3, c.y + Math.sin(a) * d * 0.7 + 10);
+      const size = 0.6 + Math.random() * 0.9;
+      sprite.scale.set(Math.random() < 0.5 ? -size : size, size);
+      sprite.alpha = 0;
+      this.eyes.addChild(sprite);
+      return {
+        sprite,
+        delay: HUSH_FADE + Math.random() * HUSH_DARK * 0.7,
+        blink: Math.random() * 5,
+      };
+    });
   }
 
   /** Kamene, ktoré nechal obor: zakryjú vodu či tŕne a vytvoria cestu. */
@@ -746,6 +780,24 @@ export class Renderer {
       this.echoSprite.scale.x = e.facing;
       this.echoSprite.position.set(e.x + PLAYER_W / 2 + e.facing, e.y + PLAYER_H + 1);
       this.echoSprite.alpha = 0.75 + Math.sin(t * 5) * 0.15;
+    }
+
+    // Tichá chvíľa: oči v tme sa postupne otvárajú, po rozhorení lampáša zmiznú.
+    const hush = game.hush;
+    if (this.hushEyes.length && hush) {
+      const elapsed =
+        hush.state === 'fade' ? hush.t : hush.state === 'dark' ? HUSH_FADE + hush.t : 99;
+      for (const e of this.hushEyes) {
+        const open = hush.state === 'fade' || hush.state === 'dark';
+        const target = open && elapsed > e.delay ? 0.85 : 0;
+        e.sprite.alpha += (target - e.sprite.alpha) * Math.min(1, dt * (open ? 3 : 12));
+        e.blink += dt;
+        if (e.blink % 4.3 < 0.12) e.sprite.alpha *= 0.2;
+      }
+      if (hush.state === 'done' && this.hushEyes.every((e) => e.sprite.alpha < 0.02)) {
+        for (const e of this.hushEyes) e.sprite.destroy();
+        this.hushEyes = [];
+      }
     }
 
     // Obor: spí ako balvan, vstane, kráča (nohy sa kývu, telo sa hojdá) a odíde do hmly.
@@ -1020,10 +1072,14 @@ export class Renderer {
     this.darkSprite.position.set(vx, vy);
     this.darkSprite.width = this.viewW;
     this.darkSprite.height = this.viewH;
+    // Tichá chvíľa: tma takmer úplná, všetky svetlá dohasnú.
+    const hush = game.hushLevel;
+    const shine = 1 - hush * 0.96;
+    const darkAlpha = this.darkness * (1 - game.flash * 0.75);
     this.darkFill
       .clear()
       .rect(0, 0, this.viewW, this.viewH)
-      .fill({ color: 0x04030a, alpha: this.darkness * (1 - game.flash * 0.75) });
+      .fill({ color: 0x04030a, alpha: darkAlpha + (0.985 - darkAlpha) * hush });
     this.app.renderer.render({ container: this.darkFill, target: this.dark, clear: true });
 
     let used = 0;
@@ -1043,7 +1099,7 @@ export class Renderer {
       s.visible = true;
       s.position.set(x - vx, y - vy);
       s.width = s.height = radius * LIGHT_SCALE;
-      s.alpha = alpha;
+      s.alpha = alpha * shine;
       used++;
     };
     const glow = (x: number, y: number, radius: number, color: number, alpha: number) => {
@@ -1059,14 +1115,16 @@ export class Renderer {
       s.position.set(x, y);
       s.width = s.height = radius * 2;
       s.tint = color;
-      s.alpha = alpha;
+      s.alpha = alpha * shine;
       glowUsed++;
     };
 
     const flicker = 1 + Math.sin(t * 13) * 0.025 + Math.sin(t * 7.3) * 0.02;
     if (game.state !== 'dead') {
       const lamp = game.lamp;
-      light(lamp.x, lamp.y, game.radius * flicker);
+      // Pri dohasínaní lampáš prská.
+      const gutter = hush > 0 && hush < 1 ? 0.6 + Math.random() * 0.5 : 1;
+      light(lamp.x, lamp.y, game.radius * flicker * gutter);
       const strength = Math.min(1, game.radius / FLARE_RADIUS);
       glow(lamp.x, lamp.y, game.radius * 1.1, WARM, 0.08 + strength * 0.14);
     }

@@ -127,6 +127,11 @@ export const EYE_DRAIN = 10;
 export const EYE_RANGE = 110;
 /** Oko je nad návnadou, v tme za ňou. */
 export const EYE_OFFSET = 44;
+/** Tichá chvíľa: lampáš dohasína, tma, potom sa znova rozhorí (sekundy). */
+export const HUSH_FADE = 0.7;
+export const HUSH_DARK = 3;
+export const HUSH_RELIGHT = 0.8;
+const HUSH_PUSH = 110;
 /** Obor: ako dlho vstáva, ako rýchlo kráča, ako často dupne a kam až dôjde. */
 export const GIANT_RISE = 1.8;
 export const GIANT_SPEED = 20;
@@ -156,6 +161,8 @@ export type GameEvent =
   | { type: 'lightning' }
   | { type: 'eye'; x: number; y: number }
   | { type: 'eyeShut'; x: number; y: number }
+  | { type: 'hush' }
+  | { type: 'hushEnd'; x: number; y: number }
   | { type: 'giantWake'; x: number }
   | { type: 'giantStep'; x: number }
   | { type: 'giantStomp'; x: number; y: number }
@@ -367,6 +374,8 @@ export class Game {
   readonly echo: Echo | null;
   readonly lures: Lure[];
   readonly giant: Giant | null;
+  /** Tichá chvíľa: wait → fade → dark → relight → done. */
+  hush: { state: 'wait' | 'fade' | 'dark' | 'relight' | 'done'; t: number } | null;
   private nextStride = 0;
   private trail: TrailSample[] = [];
   private events: GameEvent[] = [];
@@ -444,6 +453,7 @@ export class Game {
       timer: 0,
       age: 0,
     }));
+    this.hush = level.surprises.hush === undefined ? null : { state: 'wait', t: 0 };
     const g = level.surprises.giant;
     this.giant = g
       ? {
@@ -540,6 +550,9 @@ export class Game {
       return this.events;
     }
     this.updateWeather(dt);
+    this.updateHush(dt);
+    // Počas tichej chvíle dievčatko zmeravie a zadrží dych (olej neubúda).
+    if (this.hushing) input = NO_INPUT;
     this.updateLight(dt, input);
     this.updateCrumbles(dt);
     this.updateMovers();
@@ -595,6 +608,7 @@ export class Game {
     if (wantsFlare && !this.flareHeld) this.events.push({ type: 'flare' });
     this.flareHeld = wantsFlare;
     this.flaring = wantsFlare;
+    if (this.hushing) return;
     this.oil = Math.max(0, this.oil - (wantsFlare ? FLARE_DRAIN : OIL_DRAIN) * dt);
     const target = this.flaring ? FLARE_RADIUS : baseRadius(this.oil);
     this.radius += (target - this.radius) * Math.min(1, dt * (this.flaring ? 10 : 4));
@@ -1044,7 +1058,8 @@ export class Game {
       }
       if (!s.burning) s.hp = Math.min(1, s.hp + dt * 0.3);
 
-      const reach = Math.max(32, playerLight) + 14;
+      const hushing = this.hushing;
+      const reach = hushing ? 24 : Math.max(32, playerLight) + 14;
       s.timer -= dt;
       if (s.state === 'stalk') {
         // Krúži na okraji svetla a čaká na príležitosť.
@@ -1053,13 +1068,15 @@ export class Game {
         const tx = c.x + Math.cos(s.angle) * reach;
         const ty = c.y + Math.sin(s.angle) * reach * 0.8;
         steer(s, tx, ty, 48, dt);
-        if (s.timer <= 0 && dist < reach + 70 && this.state === 'play') {
+        if (s.timer <= 0 && dist < reach + 70 && this.state === 'play' && !hushing) {
           s.state = 'lunge';
           s.timer = 0.75;
           s.dirX = dx / dist;
           s.dirY = dy / dist;
           this.events.push({ type: 'lunge' });
         }
+      } else if (s.state === 'lunge' && hushing) {
+        this.recoil(s);
       } else if (s.state === 'lunge') {
         const speed = s.burning ? 70 : 125;
         s.vx = s.dirX * speed;
@@ -1105,6 +1122,65 @@ export class Game {
     p.vy = -150;
     p.onGround = false;
     this.events.push({ type: 'hurt' });
+  }
+
+  /** Prebieha tichá chvíľa (dievčatko stojí, tiene neútočia); po rozhorení už nie. */
+  get hushing(): boolean {
+    const h = this.hush;
+    return !!h && (h.state === 'fade' || h.state === 'dark');
+  }
+
+  /** Ako veľmi je tma tichej chvíle (0 = normálne, 1 = lampáš úplne zhasol). */
+  get hushLevel(): number {
+    const h = this.hush;
+    if (!h) return 0;
+    if (h.state === 'fade') return Math.min(1, h.t / HUSH_FADE);
+    if (h.state === 'dark') return 1;
+    if (h.state === 'relight') return Math.max(0, 1 - h.t / (HUSH_RELIGHT * 0.4));
+    return 0;
+  }
+
+  /** Tichá chvíľa: spustí sa, keď hráč za stĺpcom stojí na pevnej zemi. */
+  private updateHush(dt: number): void {
+    const h = this.hush;
+    if (!h || h.state === 'done' || this.state !== 'play') return;
+    h.t += dt;
+    if (h.state === 'wait') {
+      const p = this.player;
+      if (
+        this.center.x > this.level.surprises.hush! * TILE &&
+        p.onGround &&
+        this.onMover < 0 &&
+        isGround(this.groundBelow())
+      ) {
+        h.state = 'fade';
+        h.t = 0;
+        this.events.push({ type: 'hush' });
+      }
+      return;
+    }
+    if (h.state === 'fade' && h.t >= HUSH_FADE) {
+      h.state = 'dark';
+      h.t = 0;
+    } else if (h.state === 'dark' && h.t >= HUSH_DARK) {
+      h.state = 'relight';
+      h.t = 0;
+      // Lampáš sa prudko rozhorí a odhodí tiene, ktoré sa v tme prikradli.
+      const c = this.center;
+      for (const s of this.shades) {
+        const d = Math.hypot(s.x - c.x, s.y - c.y) || 1;
+        if (!s.alive || d > HUSH_PUSH) continue;
+        s.vx = ((s.x - c.x) / d) * 220;
+        s.vy = ((s.y - c.y) / d) * 220;
+        s.hp = Math.max(0.2, s.hp - 0.5);
+        this.recoil(s);
+        s.timer = 1.6;
+      }
+      this.radius = FLARE_RADIUS * 0.7;
+      this.events.push({ type: 'hushEnd', x: c.x, y: c.y });
+    } else if (h.state === 'relight' && h.t >= HUSH_RELIGHT) {
+      h.state = 'done';
+    }
   }
 
   /** Obor: vstane, prejde krajinou a v jednom mieste dupne a nechá kamene. */

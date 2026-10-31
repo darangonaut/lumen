@@ -54,6 +54,7 @@ export const LEVELS: LevelDef[] = [
     id: 'forest-3',
     world: 'forest',
     name: 'level3',
+    surprises: { hush: 40 },
     hints: ['hintShade', 'hintSafe'],
     rows: [
       '',
@@ -200,6 +201,7 @@ export const LEVELS: LevelDef[] = [
     id: 'swamp-1',
     world: 'swamp',
     name: 'level9',
+    surprises: { hush: 64 },
     hints: ['hintBounce'],
     rows: [
       '',
@@ -484,6 +486,7 @@ export const LEVELS: LevelDef[] = [
     id: 'abyss-1',
     world: 'abyss',
     name: 'level21',
+    surprises: { hush: 34 },
     hints: ['hintBigShade'],
     rows: [
       '',
