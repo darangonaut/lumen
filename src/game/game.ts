@@ -120,6 +120,13 @@ export const ECHO_DELAY = 2.4;
 const ECHO_REFORM = 3.5;
 const ECHO_LIFE = 45;
 const ECHO_GAP = 48;
+/** Falošná svetluška: keď sa k nej hráč priblíži, v tme sa otvorí obrovské oko a pije olej. */
+const LURE_REACH = 22;
+export const EYE_TIME = 3.2;
+export const EYE_DRAIN = 10;
+export const EYE_RANGE = 110;
+/** Oko je nad návnadou, v tme za ňou. */
+export const EYE_OFFSET = 44;
 
 export type GameEvent =
   | { type: 'jump' }
@@ -142,6 +149,8 @@ export type GameEvent =
   | { type: 'lunge' }
   | { type: 'gust'; dir: number }
   | { type: 'lightning' }
+  | { type: 'eye'; x: number; y: number }
+  | { type: 'eyeShut'; x: number; y: number }
   | { type: 'echo' }
   | { type: 'echoFade'; x: number; y: number }
   | { type: 'died'; cause: DeathCause }
@@ -199,6 +208,15 @@ export interface Echo {
   /** Je už na scéne (prvé sekundy za hráčom ešte nie je). */
   visible: boolean;
   timer: number;
+  age: number;
+}
+
+/** Falošná svetluška a oko, ktoré sa za ňou otvorí. */
+export interface Lure extends Point {
+  state: 'bait' | 'open' | 'gone';
+  /** Koľko ešte bude oko otvorené. */
+  timer: number;
+  /** Sekundy od otvorenia (pre animáciu). */
   age: number;
 }
 
@@ -324,6 +342,7 @@ export class Game {
   flash = 0;
   /** Temná ozvena hráča (len v niektorých leveloch). */
   readonly echo: Echo | null;
+  readonly lures: Lure[];
   private trail: TrailSample[] = [];
   private events: GameEvent[] = [];
 
@@ -392,6 +411,13 @@ export class Game {
       drinking: false,
       phase: this.rng.next() * Math.PI * 2,
       hp: 1,
+    }));
+    this.lures = (level.surprises.lures ?? []).map(([col, row]) => ({
+      x: col * TILE + TILE / 2,
+      y: row * TILE + TILE / 2,
+      state: 'bait',
+      timer: 0,
+      age: 0,
     }));
     this.echo =
       level.surprises.echo === undefined
@@ -487,6 +513,7 @@ export class Game {
     this.updateSparks(dt);
     if (this.state === 'play') this.updateShades(dt);
     if (this.state === 'play') this.updateEcho(dt);
+    this.updateLures(dt);
     if (this.state === 'play') this.updateMoths(dt);
     if (this.state === 'play') this.collect();
     return this.events;
@@ -1041,6 +1068,43 @@ export class Game {
     p.vy = -150;
     p.onGround = false;
     this.events.push({ type: 'hurt' });
+  }
+
+  /** Oko za falošnou svetluškou: otvorí sa pri priblížení, pije olej, rozžiarený lampáš ho zavrie. */
+  private updateLures(dt: number): void {
+    const c = this.center;
+    for (const l of this.lures) {
+      if (l.state === 'gone') continue;
+      if (l.state === 'bait') {
+        if (this.state === 'play' && Math.hypot(l.x - c.x, l.y - c.y) < LURE_REACH) {
+          l.state = 'open';
+          l.timer = EYE_TIME;
+          l.age = 0;
+          this.events.push({ type: 'eye', x: l.x, y: l.y - EYE_OFFSET });
+        }
+        continue;
+      }
+      l.age += dt;
+      l.timer -= dt;
+      const eyeY = l.y - EYE_OFFSET;
+      const dist = Math.hypot(l.x - c.x, eyeY - c.y);
+      const shut = () => {
+        l.state = 'gone';
+        this.events.push({ type: 'eyeShut', x: l.x, y: eyeY });
+      };
+      // Rozžiarený lampáš oko oslepí (stačí, keď na neho dosvieti).
+      if (this.state === 'play' && this.flaring && dist < this.radius) {
+        shut();
+        continue;
+      }
+      if (l.timer <= 0) {
+        shut();
+        continue;
+      }
+      // Pohľad oka pije olej (po krátkom otvorení, aby bolo kedy zareagovať).
+      if (this.state === 'play' && l.age > 0.6 && dist < EYE_RANGE)
+        this.oil = Math.max(0, this.oil - EYE_DRAIN * dt);
+    }
   }
 
   /** Ozvena: zaznamenáva pohyb hráča a o ECHO_DELAY sekúnd neskôr ho po ňom opakuje. */

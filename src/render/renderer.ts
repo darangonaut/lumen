@@ -8,6 +8,7 @@ import {
   TilingSprite,
 } from 'pixi.js';
 import {
+  EYE_OFFSET,
   FLARE_RADIUS,
   LANTERN_RADIUS,
   SPARK_RADIUS,
@@ -62,6 +63,8 @@ export class Renderer {
   private lightLayer = new Container();
   private lightPool: Sprite[] = [];
   private above = new Container();
+  /** Obrovské oči nad všetkým (aj nad tmou a žiarou). */
+  private eyes = new Container();
   private glow = new Container();
   private glowPool: Sprite[] = [];
   private particlesAbove = new Container();
@@ -78,6 +81,8 @@ export class Renderer {
   private tex = {
     player: new Map<string, Texture>(),
     echo: new Map<string, Texture>(),
+    giantEye: Texture.EMPTY,
+    pupil: Texture.EMPTY,
     shade: [] as Texture[],
     shadeBurn: [] as Texture[],
     eyes: Texture.EMPTY,
@@ -112,6 +117,7 @@ export class Renderer {
   private waterSprites: { sprite: Sprite; col: number }[] = [];
   private player = new Sprite();
   private echoSprite = new Sprite();
+  private lureSprites: { bait: Sprite; eye: Sprite; pupil: Sprite; close: number }[] = [];
   private echoPhase = 0;
   private shadeSprites: { body: Sprite; eyes: Sprite }[] = [];
   private fireflySprites: Sprite[] = [];
@@ -172,6 +178,8 @@ export class Renderer {
     this.tex.shade = [0, 1, 2].map((f) => art.shade(f, false));
     this.tex.shadeBurn = [0, 1, 2].map((f) => art.shade(f, true));
     this.tex.eyes = art.eyes();
+    this.tex.giantEye = art.giantEye();
+    this.tex.pupil = art.eyePupil();
     this.tex.firefly = art.firefly();
     this.tex.crystal = art.crystal();
     this.tex.lantern = [art.lantern(false), art.lantern(true)];
@@ -216,6 +224,7 @@ export class Renderer {
     this.actors = new Container();
     this.particlesBelow = new Container();
     this.above = new Container();
+    this.eyes = new Container();
     this.glow = new Container();
     this.glow.blendMode = 'add';
     this.particlesAbove = new Container();
@@ -314,6 +323,23 @@ export class Renderer {
       this.above.addChild(s);
       return s;
     });
+    // Falošné svetlušky; oko sa otvorí nad tmou.
+    this.lureSprites = game.lures.map((l) => {
+      const bait = new Sprite(this.tex.firefly);
+      bait.anchor.set(0.5);
+      bait.position.set(l.x, l.y);
+      bait.tint = 0xffe6a0;
+      const eye = new Sprite(this.tex.giantEye);
+      eye.anchor.set(0.5);
+      eye.position.set(l.x, l.y - EYE_OFFSET);
+      eye.visible = false;
+      const pupil = new Sprite(this.tex.pupil);
+      pupil.anchor.set(0.5);
+      pupil.visible = false;
+      this.above.addChild(bait);
+      this.eyes.addChild(eye, pupil);
+      return { bait, eye, pupil, close: 0 };
+    });
     this.crystalSprites = game.crystals.map((k) => {
       const s = new Sprite(this.tex.crystal);
       s.anchor.set(0.5);
@@ -369,6 +395,7 @@ export class Renderer {
       this.glow,
       this.above,
       this.particlesAbove,
+      this.eyes,
     );
     this.resize();
     const c = game.center;
@@ -465,6 +492,12 @@ export class Renderer {
         case 'shatter':
           this.shake = 1.5;
           this.burst(e.x, e.y, 12, 0xcfeeff, 60, true);
+          break;
+        case 'eye':
+          this.shake = 3;
+          break;
+        case 'eyeShut':
+          this.burst(e.x, e.y, 14, C.flameRed, 40, true);
           break;
         case 'echoFade':
           this.burst(e.x, e.y, 18, 0x9a5cff, 55, true);
@@ -650,6 +683,33 @@ export class Renderer {
       this.echoSprite.position.set(e.x + PLAYER_W / 2 + e.facing, e.y + PLAYER_H + 1);
       this.echoSprite.alpha = 0.75 + Math.sin(t * 5) * 0.15;
     }
+
+    // Falošné svetlušky stoja na mieste a pulzujú dvojitým úderom ako srdce;
+    // oko sa otvorí, zrenica sleduje dievčatko, potom sa zavrie.
+    game.lures.forEach((l, i) => {
+      const ls = this.lureSprites[i]!;
+      ls.bait.visible = l.state === 'bait';
+      const beat = (t * 1.1 + i * 0.3) % 1;
+      ls.bait.alpha = beat < 0.08 || (beat > 0.18 && beat < 0.26) ? 1 : 0.45;
+      let open = 0;
+      if (l.state === 'open') open = Math.min(1, l.age / 0.35);
+      else if (l.state === 'gone') {
+        ls.close = Math.min(1, ls.close + dt / 0.3);
+        open = ls.eye.visible ? 1 - ls.close : 0;
+      }
+      ls.eye.visible = ls.pupil.visible = open > 0;
+      if (!ls.eye.visible) return;
+      const squint = open * open * (3 - 2 * open);
+      ls.eye.scale.set(EYE_SCALE, EYE_SCALE * squint);
+      const dx = game.center.x - ls.eye.x;
+      const dy = game.center.y - ls.eye.y;
+      const d = Math.hypot(dx, dy) || 1;
+      ls.pupil.position.set(
+        ls.eye.x + (dx / d) * 5 * EYE_SCALE,
+        ls.eye.y + (dy / d) * 2.5 * EYE_SCALE * squint,
+      );
+      ls.pupil.scale.set(EYE_SCALE, EYE_SCALE * squint);
+    });
 
     // Svetelné plošiny sa plynule zjavia a zmiznú.
     for (const lt of this.lightTiles) {
@@ -947,6 +1007,14 @@ export class Renderer {
       light(s.x, s.y, 12, 0.6);
       glow(s.x, s.y, 14, C.crystal, 0.3);
     });
+    game.lures.forEach((l, i) => {
+      const ls = this.lureSprites[i]!;
+      if (l.state === 'bait') {
+        light(l.x, l.y, 9, 0.45 * ls.bait.alpha);
+        glow(l.x, l.y, 11, 0xe8c860, 0.45 * ls.bait.alpha);
+      }
+      if (ls.eye.visible) glow(ls.eye.x, ls.eye.y, 85, 0xff3a2a, 0.22 * ls.eye.scale.y);
+    });
     for (const m of this.mushrooms) {
       light(m.x, m.y, 9, 0.5);
       glow(m.x, m.y, 8, C.mushroom, 0.25);
@@ -967,6 +1035,9 @@ export class Renderer {
     return { ...this.cam, zoom: this.zoom };
   }
 }
+
+/** Obrovské oko je o polovicu väčšie než jeho textúra. */
+const EYE_SCALE = 1.5;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));

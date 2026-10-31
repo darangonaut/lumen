@@ -127,6 +127,72 @@ function echo(frame: PlayerFrame | 'breathe'): Texture {
   });
 }
 
+/** Obrovské oko v tme (44 × 24): žltkasté bielko so žilkami, jantárová dúhovka, bez zrenice. */
+function giantEye(): Texture {
+  return paint(44, 24, (ctx) => {
+    const almond = () => {
+      ctx.beginPath();
+      ctx.moveTo(2, 12);
+      ctx.quadraticCurveTo(22, -6, 42, 12);
+      ctx.quadraticCurveTo(22, 30, 2, 12);
+      ctx.closePath();
+    };
+    ctx.shadowColor = '#ff3a2a';
+    ctx.shadowBlur = 26;
+    const white = ctx.createRadialGradient(22, 12, 2, 22, 12, 21);
+    white.addColorStop(0, '#fff4d0');
+    white.addColorStop(0.7, '#e8c890');
+    white.addColorStop(1, '#8a3a2a');
+    ctx.fillStyle = white;
+    almond();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.save();
+    almond();
+    ctx.clip();
+    // Žilky od okrajov.
+    ctx.strokeStyle = 'rgba(170,30,30,0.55)';
+    ctx.lineWidth = 0.35;
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      const x = 22 + Math.cos(a) * 21;
+      const y = 12 + Math.sin(a) * 10;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(
+        22 + Math.cos(a + 0.3) * 14,
+        12 + Math.sin(a + 0.3) * 7,
+        22 + Math.cos(a) * 9,
+        12 + Math.sin(a) * 5,
+      );
+      ctx.stroke();
+    }
+    // Dúhovka.
+    const iris = ctx.createRadialGradient(22, 12, 1, 22, 12, 8);
+    iris.addColorStop(0, '#ffd35a');
+    iris.addColorStop(0.6, '#e07a1a');
+    iris.addColorStop(1, '#5a1a0a');
+    ctx.fillStyle = iris;
+    circle(ctx, 22, 12, 8);
+    ctx.restore();
+    // Viečka: tmavý okraj.
+    ctx.strokeStyle = INK_CSS;
+    ctx.lineWidth = 1.4;
+    almond();
+    ctx.stroke();
+  });
+}
+
+/** Zvislá zrenica obrovského oka. */
+function eyePupil(): Texture {
+  return paint(6, 16, (ctx) => {
+    ctx.fillStyle = INK_CSS;
+    ctx.beginPath();
+    ctx.ellipse(3, 8, 1.6, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
 function breathePose(frame: PlayerFrame | 'breathe'): GirlPose {
   const f = frame === 'breathe' ? 'idle' : frame;
   return {
@@ -1116,6 +1182,8 @@ export const vectorArt: Art = {
   terrain,
   player,
   echo,
+  giantEye,
+  eyePupil,
   shade,
   eyes,
   firefly,

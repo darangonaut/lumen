@@ -19,6 +19,9 @@ export interface Art {
   player(frame: PlayerFrame | 'breathe'): Texture;
   /** Temná ozvena postavičky (18 × 21, postavička posunutá o 2 doprava a nadol). */
   echo(frame: PlayerFrame | 'breathe'): Texture;
+  /** Obrovské oko v tme (44 × 24) a jeho zrenica (6 × 16). */
+  giantEye(): Texture;
+  eyePupil(): Texture;
   shade(frame: number, burning: boolean): Texture;
   eyes(): Texture;
   firefly(): Texture;

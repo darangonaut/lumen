@@ -125,6 +125,7 @@ export const LEVELS: LevelDef[] = [
     id: 'caves-2',
     world: 'caves',
     name: 'level6',
+    surprises: { lures: [[95, 11]] },
     hints: ['hintMoth'],
     rows: [
       '##############################################################################################################',
@@ -220,6 +221,7 @@ export const LEVELS: LevelDef[] = [
     id: 'swamp-2',
     world: 'swamp',
     name: 'level10',
+    surprises: { lures: [[50, 11]] },
     rows: [
       '',
       '                          *',
@@ -336,6 +338,7 @@ export const LEVELS: LevelDef[] = [
     id: 'ice-3',
     world: 'ice',
     name: 'level15',
+    surprises: { lures: [[100, 11]] },
     rows: [
       '',
       '',

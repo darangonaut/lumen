@@ -49,10 +49,12 @@ export interface Sign extends Point {
 
 /**
  * Prekvapenia levelu (zadané mimo ASCII mapy, súradnice v políčkach):
- * echo = stĺpec, za ktorým sa za hráčom vynorí jeho temná ozvena.
+ * echo = stĺpec, za ktorým sa za hráčom vynorí jeho temná ozvena;
+ * lures = falošné svetlušky [stĺpec, riadok] — návnady obrovského oka v tme.
  */
 export interface Surprises {
   echo?: number;
+  lures?: [number, number][];
 }
 
 export interface LevelDef {

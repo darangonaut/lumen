@@ -429,3 +429,36 @@ describe('ozvena — férovosť', () => {
     expect(game.echo!.visible).toBe(false);
   });
 });
+
+describe('falošná svetluška', () => {
+  const ROWS = [' '.repeat(40), ' P' + ' '.repeat(10) + ' ' + ' '.repeat(26) + 'E', '#'.repeat(40)];
+  const lureGame = () =>
+    new Game(
+      parseLevel({
+        id: 'lure',
+        name: 'lure',
+        world: 'caves',
+        rows: ROWS,
+        surprises: { lures: [[8, 1]] },
+      }),
+    );
+
+  it('nedá olej; pri priblížení sa otvorí oko a kto stojí, tomu pije olej', () => {
+    const game = lureGame();
+    const events = run(game, 1.6, { right: true });
+    expect(events.some((e) => e.type === 'eye')).toBe(true);
+    expect(events.some((e) => e.type === 'firefly')).toBe(false);
+    const before = game.oil;
+    run(game, 2);
+    // Bez oka by za 2 s ubudlo len ~2 oleja.
+    expect(before - game.oil).toBeGreaterThan(10);
+  });
+
+  it('rozžiarený lampáš oko zavrie a potom zmizne nadobro', () => {
+    const game = lureGame();
+    run(game, 1.6, { right: true });
+    const events = run(game, 0.6, { flare: true });
+    expect(events.some((e) => e.type === 'eyeShut')).toBe(true);
+    expect(game.lures[0]!.state).toBe('gone');
+  });
+});

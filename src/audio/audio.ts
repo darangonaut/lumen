@@ -194,6 +194,15 @@ export class Sound {
             this.tone(this.note(n) * 2, 'triangle', 0.04, 0.3, this.master!, i * 0.04),
           );
           break;
+        case 'eye':
+          // Mokré otvorenie viečka a hlboké zadunenie.
+          this.noise(0.5, 300, 0.14, 'bandpass');
+          this.sweep(70, 45, 'sawtooth', 0.12, 1.6);
+          break;
+        case 'eyeShut':
+          this.noise(0.3, 600, 0.08, 'bandpass');
+          this.sweep(120, 60, 'triangle', 0.08, 0.5);
+          break;
         case 'echo':
           // Zvrátený nádych: zostupný šepot a nízky tón.
           this.noise(1.1, 1400, 0.07, 'bandpass');

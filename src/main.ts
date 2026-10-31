@@ -353,6 +353,8 @@ function onEvents(events: GameEvent[]): void {
                   : 'diedDark',
         ),
       );
+    } else if (e.type === 'eye') {
+      showToast(t('eyeOpen'), 2600);
     } else if (e.type === 'echo') {
       showToast(t('echoRise'), 3400);
     } else if (e.type === 'exit') {

@@ -83,6 +83,7 @@ const en = {
     'Shades wait for you to falter. Jump on their heads, throw a spark (C) or flare the lantern (Shift)!',
   hintSafe: 'Next to a lit lamp you are safe from shades.',
   echoRise: 'Something behind you has taken your shape. Don’t stop.',
+  eyeOpen: 'That was no firefly. Flare the lantern, or run!',
   hintFlareTouch:
     'Hold ✦: the lantern flares and reveals distant platforms. It burns a lot of oil.',
   hintShadeTouch: 'Shades wait for you to falter. Jump on their heads, throw a spark ✸ or hold ✦!',
@@ -195,6 +196,7 @@ const sk: Record<Key, string> = {
     'Tiene čakajú, kým zaváhaš. Skoč im na hlavu, hoď iskru (C) alebo rozžiar lampáš (Shift)!',
   hintSafe: 'Pri zapálenej lampe si pred tieňmi v bezpečí.',
   echoRise: 'Niečo za tebou si vzalo tvoju podobu. Nezastavuj.',
+  eyeOpen: 'To nebola svetluška. Rozžiar lampáš, alebo uteč!',
   hintFlareTouch: 'Podrž ✦: lampáš sa rozžiari a ukáže vzdialené plošiny. Míňa však veľa oleja.',
   hintShadeTouch: 'Tiene čakajú, kým zaváhaš. Skoč im na hlavu, hoď iskru ✸ alebo podrž ✦!',
   hintMoveTouch: 'Šípky vľavo dole na chôdzu, ⤒ vpravo na skok.',
@@ -304,6 +306,7 @@ const cs: Record<Key, string> = {
     'Stíny čekají, až zaváháš. Skoč jim na hlavu, hoď jiskru (C) nebo rozzař lucernu (Shift)!',
   hintSafe: 'U zapálené lampy jsi před stíny v bezpečí.',
   echoRise: 'Něco za tebou si vzalo tvou podobu. Nezastavuj.',
+  eyeOpen: 'To nebyla světluška. Rozzař lampáš, nebo uteč!',
   hintFlareTouch: 'Drž ✦: lucerna se rozzáří a ukáže vzdálené plošiny. Spotřebuje ale hodně oleje.',
   hintShadeTouch: 'Stíny čekají, až zaváháš. Skoč jim na hlavu, hoď jiskru ✸ nebo drž ✦!',
   hintMoveTouch: 'Šipky vlevo dole pro chůzi, ⤒ vpravo pro skok.',
